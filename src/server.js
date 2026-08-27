@@ -1,12 +1,14 @@
 import http from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fetchReport } from './wb-api.js';
-import { analyzeReport } from './analyze.js';
+import { analyzeReport, compareAnalyses, evaluateRules, forecastCashflow, simulateProduct } from './analyze.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 const port = Number(process.env.PORT) || 3847;
+const dataDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.data');
+const historyFile = path.join(dataDir, 'history.jsonl');
 const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml' };
 
 function json(res, status, value) { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(value)); }
@@ -16,13 +18,43 @@ async function body(req) {
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
 
+function previousPeriod(dateFrom, dateTo) {
+  const from = new Date(`${dateFrom}T00:00:00Z`), to = new Date(`${dateTo}T00:00:00Z`);
+  const days = Math.round((to - from) / 86400000) + 1;
+  const previousTo = new Date(from); previousTo.setUTCDate(previousTo.getUTCDate() - 1);
+  const previousFrom = new Date(previousTo); previousFrom.setUTCDate(previousFrom.getUTCDate() - days + 1);
+  return { dateFrom: previousFrom.toISOString().slice(0, 10), dateTo: previousTo.toISOString().slice(0, 10) };
+}
+
+async function saveHistory(entry) { await mkdir(dataDir, { recursive: true }); await appendFile(historyFile, `${JSON.stringify(entry)}\n`, 'utf8'); }
+async function readHistory() { try { return (await readFile(historyFile, 'utf8')).split(/\r?\n/).filter(Boolean).slice(-30).reverse().map(JSON.parse); } catch (error) { if (error.code === 'ENOENT') return []; throw error; } }
+
 const server = http.createServer(async (req, res) => {
   try {
     if (req.method === 'POST' && req.url === '/api/analyze') {
       const input = await body(req);
       const rows = await fetchReport({ token: input.token, dateFrom: input.dateFrom, dateTo: input.dateTo });
-      return json(res, 200, analyzeReport(rows, input.settings));
+      const analysis = analyzeReport(rows, input.settings);
+      analysis.alerts = evaluateRules(analysis.products, input.settings?.rules);
+      analysis.forecast = forecastCashflow(analysis, { days: Math.round((new Date(input.dateTo) - new Date(input.dateFrom)) / 86400000) + 1, reservePercent: input.settings?.reservePercent });
+      if (input.compare) {
+        const period = previousPeriod(input.dateFrom, input.dateTo);
+        const cached = (await readHistory()).find(entry => entry.period?.dateFrom === period.dateFrom && entry.period?.dateTo === period.dateTo && Array.isArray(entry.products));
+        try {
+          const previous = cached ? { summary: cached.summary, products: cached.products } : analyzeReport(await fetchReport({ token: input.token, ...period }), input.settings);
+          analysis.comparison = { period, source: cached ? 'local-history' : 'wb-api', ...compareAnalyses(analysis, previous) };
+        } catch (error) { analysis.comparisonError = error.message; }
+      }
+      if (input.saveHistory) await saveHistory({ generatedAt: analysis.generatedAt, period: { dateFrom: input.dateFrom, dateTo: input.dateTo }, summary: analysis.summary, products: analysis.products, alerts: analysis.alerts.length });
+      return json(res, 200, analysis);
     }
+    if (req.method === 'POST' && req.url === '/api/simulate') { const input = await body(req); return json(res, 200, simulateProduct(input.product, input.scenario)); }
+    if (req.method === 'POST' && req.url === '/api/telegram') {
+      const input = await body(req); if (!input.botToken || !input.chatId || !input.message) throw new Error('Нужны bot token, chat ID и сообщение');
+      const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(input.botToken)}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: input.chatId, text: String(input.message).slice(0, 4000) }), signal: AbortSignal.timeout(30000) });
+      if (!response.ok) throw new Error(`Telegram вернул HTTP ${response.status}`); return json(res, 200, { ok: true });
+    }
+    if (req.method === 'GET' && req.url === '/api/history') return json(res, 200, await readHistory());
     if (req.method !== 'GET') return json(res, 405, { error: 'Метод не поддерживается' });
     const pathname = new URL(req.url, 'http://localhost').pathname;
     const relative = pathname === '/' ? 'index.html' : pathname.slice(1);
