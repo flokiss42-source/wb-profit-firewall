@@ -1,5 +1,6 @@
 const ENDPOINT = 'https://statistics-api.wildberries.ru/api/v5/supplier/reportDetailByPeriod';
 const STOCKS_ENDPOINT = 'https://seller-analytics-api.wildberries.ru/api/analytics/v1/stocks-report/wb-warehouses';
+const CARD_ENDPOINT = 'https://content-api.wildberries.ru/content/v2/get/cards/list';
 
 export function validateDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) throw new Error(`Некорректная дата: ${value}`);
@@ -42,4 +43,20 @@ export async function fetchCurrentStocks({ token, nmIds = [], fetchImpl = fetch 
   const payload = await response.json();
   const rows = Array.isArray(payload) ? payload : Array.isArray(payload.data) ? payload.data : Array.isArray(payload.stocks) ? payload.stocks : [];
   return rows.map(row => ({ nmId: String(row.nmId ?? row.nmID ?? ''), barcode: String(row.barcode ?? row.vendorCode ?? ''), warehouse: String(row.warehouseName ?? row.officeName ?? row.warehouse ?? ''), quantity: Number(row.quantity ?? row.qty ?? row.amount ?? 0) || 0, inWayToClient: Number(row.inWayToClient ?? 0) || 0, inWayFromClient: Number(row.inWayFromClient ?? 0) || 0, updatedAt: row.updatedAt ?? row.lastChangeDate ?? null }));
+}
+
+export async function fetchProductCard({ token, nmId, fetchImpl = fetch }) {
+  if (!token) throw new Error('Введите токен WB категории «Контент» для фотографий');
+  if (!Number.isInteger(Number(nmId)) || Number(nmId) <= 0) throw new Error('Некорректный nmID товара');
+  const response = await fetchImpl(CARD_ENDPOINT, { method: 'POST', headers: { Authorization: token, 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ settings: { cursor: { limit: 100 }, filter: { textSearch: String(nmId), withPhoto: -1 } } }), signal: AbortSignal.timeout(60000) });
+  if (!response.ok) {
+    if (response.status === 429) throw new Error('WB ограничил запросы карточек. Подождите немного');
+    if (response.status === 401 || response.status === 403) throw new Error('Нужен токен WB категории «Контент»');
+    throw new Error(`WB API карточек вернул HTTP ${response.status}`);
+  }
+  const payload = await response.json();
+  const cards = Array.isArray(payload.cards) ? payload.cards : Array.isArray(payload.data) ? payload.data : [];
+  const card = cards.find(item => String(item.nmID ?? item.nmId) === String(nmId)) ?? cards[0];
+  const photos = Array.isArray(card?.photos) ? card.photos.map(photo => String(photo.big ?? photo.c516x688 ?? photo.square ?? photo.tm ?? '')).filter(url => /^https:\/\//i.test(url)) : [];
+  return { nmId: String(nmId), title: String(card?.title ?? card?.subjectName ?? ''), photos };
 }
