@@ -1,0 +1,2 @@
+const KNOWN=/логист|хранен|при[её]м|эквайр|штраф|удерж|комисс|реклам|вознагражд/i;
+export function findUnexplainedCharges(rows=[]){return rows.filter(row=>{const amount=Number(row.deduction??row.amount??row.penalty??0);const label=String(row.doc_type_name??row.reason??row.type??'');return Number.isFinite(amount)&&Math.abs(amount)>0&&!KNOWN.test(label)}).map(row=>({date:row.rr_dt??row.date??null,amount:Number(row.deduction??row.amount??row.penalty),label:String(row.doc_type_name??row.reason??row.type??'Неизвестное списание'),nmId:row.nm_id==null?null:String(row.nm_id)}))}
