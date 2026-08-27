@@ -9,3 +9,9 @@ header h1{font-size:38px;text-shadow:0 4px 18px #2563eb22}
 .primary:hover{transform:translateY(-2px);box-shadow:0 12px 24px #2563eb66}
 .brand i{box-shadow:0 8px 18px #2563eb66;transform:rotate(-6deg)}
 .cards .dark{background:linear-gradient(145deg,#1c2b46,#101827);box-shadow:0 16px 30px #10182755}
+.setup,.panel,.cards article,.grid3 article{border-radius:16px;border-color:#d4e0f2;position:relative;overflow:hidden}
+.setup:before,.panel:before,.cards article:before{content:"";position:absolute;inset:0 0 auto;height:3px;background:linear-gradient(90deg,#2563eb,#7dd3fc,transparent);opacity:.8}
+.cards article{background:linear-gradient(145deg,#fff,#f5f8fd);transform:perspective(800px) rotateX(1deg)}
+.cards article:nth-child(2){transform:perspective(800px) rotateX(1deg) translateY(5px)}
+.cards article:nth-child(3){transform:perspective(800px) rotateX(1deg) translateY(2px)}
+.cards article:nth-child(4){transform:perspective(800px) rotateX(1deg) translateY(-2px)}
