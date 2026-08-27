@@ -7,7 +7,17 @@
 
 **Визуальный обзор интерфейса**
 
-![Скриншоты интерфейса WB Profit Firewall](./docs/visual-guide.png)
+![Шаг 1 — запуск аудита](./docs/guide/step-1.png)
+
+![Шаг 2 — фильтры и сортировка](./docs/guide/step-2.png)
+
+![Шаг 3 — экономика товара](./docs/guide/step-3.png)
+
+![Шаг 4 — фото и название](./docs/guide/step-4.png)
+
+![Шаг 5 — остатки и дефицит](./docs/guide/step-5.png)
+
+![Шаг 6 — результат аудита](./docs/guide/step-6.png)
 
 [Открыть интерактивный гайд со стрелками и пояснениями](./public/user-guide.html)
 
