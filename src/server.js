@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { appendFile, mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fetchReport } from './wb-api.js';
+import { fetchReport, fetchCurrentStocks } from './wb-api.js';
 import { analyzeReport, compareAnalyses, evaluateRules, forecastCashflow, simulateProduct } from './analyze.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
@@ -63,6 +63,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, analysis);
     }
     if (req.method === 'POST' && req.url === '/api/simulate') { const input = await body(req); return json(res, 200, simulateProduct(input.product, input.scenario)); }
+    if (req.method === 'POST' && req.url === '/api/stocks') { const input = await body(req); const stocks = await fetchCurrentStocks({ token: input.token, nmIds: input.nmIds }); return json(res, 200, { generatedAt: new Date().toISOString(), rows: stocks.length, stocks }); }
     if (req.method === 'POST' && req.url === '/api/telegram') {
       const input = await body(req); if (!input.botToken || !input.chatId || !input.message) throw new Error('Нужны bot token, chat ID и сообщение');
       const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(input.botToken)}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: input.chatId, text: String(input.message).slice(0, 4000) }), signal: AbortSignal.timeout(30000) });

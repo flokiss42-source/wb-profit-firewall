@@ -1,4 +1,5 @@
 const ENDPOINT = 'https://statistics-api.wildberries.ru/api/v5/supplier/reportDetailByPeriod';
+const STOCKS_ENDPOINT = 'https://seller-analytics-api.wildberries.ru/api/analytics/v1/stocks-report/wb-warehouses';
 
 export function validateDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) throw new Error(`Некорректная дата: ${value}`);
@@ -27,4 +28,18 @@ export async function fetchReport({ token, dateFrom, dateTo, fetchImpl = fetch, 
     rrdid = next; if (batch.length < pageLimit) return rows;
   }
   throw new Error('Превышен безопасный лимит страниц WB API');
+}
+
+export async function fetchCurrentStocks({ token, nmIds = [], fetchImpl = fetch }) {
+  if (!token) throw new Error('Введите токен WB категории «Аналитика» для остатков');
+  const ids = [...new Set(nmIds.map(Number).filter(Number.isInteger).filter(id => id > 0))];
+  const response = await fetchImpl(STOCKS_ENDPOINT, { method: 'POST', headers: { Authorization: token, 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ nmIds: ids }), signal: AbortSignal.timeout(60000) });
+  if (!response.ok) {
+    if (response.status === 429) throw new Error('WB ограничил частоту запроса остатков. Подождите 20 секунд');
+    if (response.status === 401 || response.status === 403) throw new Error('Нужен токен WB категории «Аналитика» для остатков');
+    throw new Error(`WB API остатков вернул HTTP ${response.status}`);
+  }
+  const payload = await response.json();
+  const rows = Array.isArray(payload) ? payload : Array.isArray(payload.data) ? payload.data : Array.isArray(payload.stocks) ? payload.stocks : [];
+  return rows.map(row => ({ nmId: String(row.nmId ?? row.nmID ?? ''), barcode: String(row.barcode ?? row.vendorCode ?? ''), warehouse: String(row.warehouseName ?? row.officeName ?? row.warehouse ?? ''), quantity: Number(row.quantity ?? row.qty ?? row.amount ?? 0) || 0, inWayToClient: Number(row.inWayToClient ?? 0) || 0, inWayFromClient: Number(row.inWayFromClient ?? 0) || 0, updatedAt: row.updatedAt ?? row.lastChangeDate ?? null }));
 }
