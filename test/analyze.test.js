@@ -21,3 +21,10 @@ test('не допускает HTML и числовой мусор в вычис�
 test('объясняет изменение прибыли между периодами',()=>{const before=analyzeReport([{nm_id:1,barcode:'a',doc_type_name:'Продажа',quantity:1,retail_amount:1000,ppvz_for_pay:800}],{costs:{a:300}});const current=analyzeReport([{nm_id:1,barcode:'a',doc_type_name:'Продажа',quantity:1,retail_amount:1000,ppvz_for_pay:600}],{costs:{a:300}});const comparison=compareAnalyses(current,before);assert.equal(comparison.delta.profit,-200);assert.equal(comparison.drivers[0].nmId,'1')});
 
 test('симулирует цену, проверяет правила и прогнозирует деньги',()=>{const analysis=analyzeReport([{nm_id:1,barcode:'a',doc_type_name:'Продажа',quantity:2,retail_amount:2000,ppvz_for_pay:1200,delivery_rub:300}],{taxPercent:6,costs:{a:500}});const product=analysis.products[0];assert.equal(simulateProduct(product,{priceChangePercent:10}).available,true);assert.ok(evaluateRules(analysis.products,{minMargin:20}).length);const forecast=forecastCashflow(analysis,{days:7,reservePercent:10});assert.equal(forecast.recommendedReserve,90)});
+
+test('показывает покрытие данных и не маскирует неполную прибыль',()=>{const result=analyzeReport([
+  {nm_id:1,barcode:'a',doc_type_name:'Продажа',quantity:1,retail_amount:1000,ppvz_for_pay:800},
+  {nm_id:2,barcode:'b',doc_type_name:'Продажа',quantity:1,retail_amount:3000,ppvz_for_pay:2400}
+],{costs:{a:300}});assert.equal(result.accuracy.status,'partial');assert.equal(result.accuracy.costCoverageProducts,50);assert.equal(result.accuracy.costCoverageSales,25);assert.equal(result.summary.unknownGrossSales,3000);assert.equal(result.actions[0].type,'cost')});
+
+test('сопоставляет рекламу по баркоду раньше nmID и считает экономику единицы',()=>{const result=analyzeReport([{nm_id:1,barcode:'a',doc_type_name:'Продажа',quantity:2,retail_amount:2000,ppvz_for_pay:1600}],{taxPercent:0,costs:{a:300},adCosts:{1:900,a:200}});const item=result.products[0];assert.equal(item.ads,200);assert.equal(item.adSource,'barcode');assert.equal(item.profit,800);assert.equal(item.profitPerUnit,400);assert.equal(item.drr,10)});
