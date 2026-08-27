@@ -1,4 +1,4 @@
-const ENDPOINT = 'https://statistics-api.wildberries.ru/api/v5/supplier/reportDetailByPeriod';
+const ENDPOINT = 'https://finance-api.wildberries.ru/api/finance/v1/sales-reports/detailed';
 const STOCKS_ENDPOINT = 'https://seller-analytics-api.wildberries.ru/api/analytics/v1/stocks-report/wb-warehouses';
 const CARD_ENDPOINT = 'https://content-api.wildberries.ru/content/v2/get/cards/list';
 
@@ -13,15 +13,13 @@ export async function fetchReport({ token, dateFrom, dateTo, fetchImpl = fetch, 
   if (dateFrom > dateTo) throw new Error('Начальная дата позже конечной');
   const rows = []; let rrdid = 0;
   for (let page = 0; page < maxPages; page++) {
-    const url = new URL(ENDPOINT);
-    url.searchParams.set('dateFrom', dateFrom); url.searchParams.set('dateTo', dateTo);
-    url.searchParams.set('limit', String(pageLimit)); url.searchParams.set('rrdid', String(rrdid));
-    const response = await fetchImpl(url, { headers: { Authorization: token, Accept: 'application/json' }, signal: AbortSignal.timeout(60000) });
+    const url = new URL(ENDPOINT); url.searchParams.set('rrdid',String(rrdid));
+    const response = await fetchImpl(url, { method:'POST', headers: { Authorization: token, 'Content-Type':'application/json', Accept: 'application/json' }, body: JSON.stringify({dateFrom,dateTo,limit:pageLimit,rrdid}), signal: AbortSignal.timeout(60000) });
     if (!response.ok) {
       if (response.status === 429) throw new Error('Лимит запросов WB исчерпан. Подождите немного; успешно загруженный период повторно берётся из памяти');
-      throw new Error(response.status === 401 || response.status === 403 ? 'WB отклонил токен или у него нет категории «Статистика»' : `WB API вернул HTTP ${response.status}`);
+      throw new Error(response.status === 401 || response.status === 403 ? 'WB отклонил токен: нужен доступ категории «Финансы» (ранее «Статистика»)' : `WB API вернул HTTP ${response.status}`);
     }
-    const batch = await response.json(); if (!Array.isArray(batch)) throw new Error('WB API вернул неожиданный формат');
+    const payload = await response.json(); const batch = Array.isArray(payload) ? payload : Array.isArray(payload.data) ? payload.data : Array.isArray(payload.rows) ? payload.rows : []; if (!Array.isArray(batch)) throw new Error('WB API вернул неожиданный формат');
     if (!batch.length) return rows;
     rows.push(...batch);
     const next = Number(batch.at(-1)?.rrd_id);
