@@ -1,0 +1,11 @@
+/* 3D visual layer: loaded by future UI shell */
+body{background:radial-gradient(circle at 80% -10%,#dbeafe 0,transparent 38%),linear-gradient(135deg,#f8fbff,#eef3fa)}
+aside{box-shadow:8px 0 30px #07152d33;z-index:2}
+main{perspective:1200px}
+header h1{font-size:38px;text-shadow:0 4px 18px #2563eb22}
+.setup,.panel,.cards article,.grid3 article,.accuracy,.dashboard-note{box-shadow:0 14px 30px #18365d16,0 2px 5px #18365d0c;transition:transform .2s,box-shadow .2s}
+.setup:hover,.panel:hover,.cards article:hover,.grid3 article:hover{transform:translateY(-3px);box-shadow:0 20px 38px #18365d22}
+.primary{box-shadow:0 8px 18px #2563eb55;transition:transform .2s,box-shadow .2s}
+.primary:hover{transform:translateY(-2px);box-shadow:0 12px 24px #2563eb66}
+.brand i{box-shadow:0 8px 18px #2563eb66;transform:rotate(-6deg)}
+.cards .dark{background:linear-gradient(145deg,#1c2b46,#101827);box-shadow:0 16px 30px #10182755}
