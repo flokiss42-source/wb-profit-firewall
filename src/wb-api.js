@@ -15,7 +15,10 @@ export async function fetchReport({ token, dateFrom, dateTo, fetchImpl = fetch, 
     url.searchParams.set('dateFrom', dateFrom); url.searchParams.set('dateTo', dateTo);
     url.searchParams.set('limit', String(pageLimit)); url.searchParams.set('rrdid', String(rrdid));
     const response = await fetchImpl(url, { headers: { Authorization: token, Accept: 'application/json' }, signal: AbortSignal.timeout(60000) });
-    if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? 'WB отклонил токен или у него нет категории «Статистика»' : `WB API вернул HTTP ${response.status}`);
+    if (!response.ok) {
+      if (response.status === 429) throw new Error('Лимит запросов WB исчерпан. Подождите немного; успешно загруженный период повторно берётся из памяти');
+      throw new Error(response.status === 401 || response.status === 403 ? 'WB отклонил токен или у него нет категории «Статистика»' : `WB API вернул HTTP ${response.status}`);
+    }
     const batch = await response.json(); if (!Array.isArray(batch)) throw new Error('WB API вернул неожиданный формат');
     if (!batch.length) return rows;
     rows.push(...batch);

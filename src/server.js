@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { createHash } from 'node:crypto';
 import { appendFile, mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +11,16 @@ const port = Number(process.env.PORT) || 3847;
 const dataDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.data');
 const historyFile = path.join(dataDir, 'history.jsonl');
 const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml' };
+const reportCache = new Map();
+const CACHE_TTL_MS = 10 * 60 * 1000;
+function reportCacheKey(token, dateFrom, dateTo) { return createHash('sha256').update(`${token}\0${dateFrom}\0${dateTo}`).digest('hex'); }
+async function cachedReport(input) {
+  const key = reportCacheKey(input.token, input.dateFrom, input.dateTo), cached = reportCache.get(key);
+  if (cached && Date.now() - cached.createdAt < CACHE_TTL_MS) return { rows: cached.rows, source: 'memory-cache' };
+  const rows = await fetchReport(input); reportCache.set(key, { createdAt: Date.now(), rows });
+  if (reportCache.size > 20) reportCache.delete(reportCache.keys().next().value);
+  return { rows, source: 'wb-api' };
+}
 
 function json(res, status, value) { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(value)); }
 async function body(req) {
@@ -33,17 +44,19 @@ const server = http.createServer(async (req, res) => {
   try {
     if (req.method === 'POST' && req.url === '/api/analyze') {
       const input = await body(req);
-      const rows = await fetchReport({ token: input.token, dateFrom: input.dateFrom, dateTo: input.dateTo });
+      const report = await cachedReport({ token: input.token, dateFrom: input.dateFrom, dateTo: input.dateTo });
+      const rows = report.rows;
       const analysis = analyzeReport(rows, input.settings);
+      analysis.reportSource = report.source;
       analysis.alerts = evaluateRules(analysis.products, input.settings?.rules);
       analysis.forecast = forecastCashflow(analysis, { days: Math.round((new Date(input.dateTo) - new Date(input.dateFrom)) / 86400000) + 1, reservePercent: input.settings?.reservePercent });
       if (input.compare) {
         const period = previousPeriod(input.dateFrom, input.dateTo);
         const cached = (await readHistory()).find(entry => entry.period?.dateFrom === period.dateFrom && entry.period?.dateTo === period.dateTo && Array.isArray(entry.products));
-        try {
-          const previous = cached ? { summary: cached.summary, products: cached.products } : analyzeReport(await fetchReport({ token: input.token, ...period }), input.settings);
-          analysis.comparison = { period, source: cached ? 'local-history' : 'wb-api', ...compareAnalyses(analysis, previous) };
-        } catch (error) { analysis.comparisonError = error.message; }
+        if (cached) {
+          const previous = { summary: cached.summary, products: cached.products };
+          analysis.comparison = { period, source: 'local-history', ...compareAnalyses(analysis, previous) };
+        } else analysis.comparisonError = 'Нет локального снимка предыдущего периода — дополнительный запрос отключён для защиты от лимита WB';
       }
       if (input.saveHistory) await saveHistory({ generatedAt: analysis.generatedAt, period: { dateFrom: input.dateFrom, dateTo: input.dateTo }, summary: analysis.summary, products: analysis.products, alerts: analysis.alerts.length });
       return json(res, 200, analysis);
