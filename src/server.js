@@ -7,6 +7,7 @@ import { fetchReport } from './wb-api.js';
 import { analyzeReport, compareAnalyses, evaluateRules, forecastCashflow, simulateProduct } from './analyze.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
+const vendorRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'node_modules', 'xlsx', 'dist');
 const port = Number(process.env.PORT) || 3847;
 const dataDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.data');
 const historyFile = path.join(dataDir, 'history.jsonl');
@@ -70,6 +71,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && req.url === '/api/history') return json(res, 200, await readHistory());
     if (req.method !== 'GET') return json(res, 405, { error: 'Метод не поддерживается' });
     const pathname = new URL(req.url, 'http://localhost').pathname;
+    if (pathname === '/vendor/xlsx.full.min.js') { const data = await readFile(path.join(vendorRoot, 'xlsx.full.min.js')); res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=86400' }); return res.end(data); }
     const relative = pathname === '/' ? 'index.html' : pathname.slice(1);
     const file = path.resolve(root, relative);
     if (!file.startsWith(`${root}${path.sep}`)) return json(res, 403, { error: 'Запрещено' });
