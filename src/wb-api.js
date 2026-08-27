@@ -36,8 +36,9 @@ export async function fetchCurrentStocks({ token, nmIds = [], fetchImpl = fetch 
   const ids = [...new Set(nmIds.map(Number).filter(Number.isInteger).filter(id => id > 0))];
   const response = await fetchImpl(STOCKS_ENDPOINT, { method: 'POST', headers: { Authorization: token, 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ nmIds: ids }), signal: AbortSignal.timeout(60000) });
   if (!response.ok) {
+    let detail=''; try { const body=await response.clone().json(); detail=body?.message||body?.error||''; } catch {}
     if (response.status === 429) throw new Error('WB ограничил частоту запроса остатков. Подождите 20 секунд');
-    if (response.status === 401 || response.status === 403) throw new Error('Нужен токен WB категории «Аналитика» для остатков');
+    if (response.status === 401 || response.status === 403) throw new Error(`WB отклонил запрос остатков (HTTP ${response.status})${detail?`: ${detail}`:''}. Проверьте категорию токена и кабинет`);
     throw new Error(`WB API остатков вернул HTTP ${response.status}`);
   }
   const payload = await response.json();
