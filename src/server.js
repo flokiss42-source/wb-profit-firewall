@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fetchReport, fetchCurrentStocks, fetchProductCard } from './wb-api.js';
 import { analyzeReport, analyzeInventory, compareAnalyses, evaluateRules, forecastCashflow, simulateProduct } from './analyze.js';
+import { findUnexplainedCharges } from './charges.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 const vendorRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'node_modules', 'xlsx', 'dist');
@@ -48,6 +49,7 @@ const server = http.createServer(async (req, res) => {
       const report = await cachedReport({ token: input.token, dateFrom: input.dateFrom, dateTo: input.dateTo });
       const rows = report.rows;
       const analysis = analyzeReport(rows, input.settings);
+      analysis.unexplainedCharges = findUnexplainedCharges(rows);
       analysis.reportSource = report.source;
       analysis.alerts = evaluateRules(analysis.products, input.settings?.rules);
       analysis.forecast = forecastCashflow(analysis, { days: Math.round((new Date(input.dateTo) - new Date(input.dateFrom)) / 86400000) + 1, reservePercent: input.settings?.reservePercent });

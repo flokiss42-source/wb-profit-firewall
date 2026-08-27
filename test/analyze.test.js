@@ -7,6 +7,12 @@ test('разделяет продажи и возвраты и суммируе�
   {nm_id:1,sa_name:'A',doc_type_name:'Возврат',quantity:1,retail_amount:-1000,ppvz_for_pay:-700,delivery_rub:80,penalty:50}
 ];const [item]=aggregateReport(rows);assert.equal(item.sold,2);assert.equal(item.returned,1);assert.equal(item.grossSales,1000);assert.equal(item.logistics,180);assert.equal(item.penalties,50)});
 
+test('не создаёт товары из технических строк WB и сохраняет знак корректировок',()=>{const rows=[
+  {nm_id:0,barcode:'technical',delivery_rub:100},
+  {nm_id:1,barcode:'a',doc_type_name:'Продажа',quantity:1,retail_amount:1000,ppvz_for_pay:700,delivery_rub:100,acquiring_fee:20},
+  {nm_id:1,barcode:'a',delivery_rub:-30}
+];const result=analyzeReport(rows,{costs:{a:200}});assert.equal(result.products.length,1);assert.equal(result.products[0].logistics,70);assert.equal(result.products[0].acquiring,20);assert.equal(result.products[0].charges,70);assert.equal(result.products[0].netFromWb,630);assert.equal(result.summary.unallocatedCharges,100);assert.equal(result.summary.charges,170);assert.equal(result.summary.profit,330)});
+
 test('не показывает прибыль без себестоимости',()=>{const result=analyzeReport([{nm_id:1,doc_type_name:'Продажа',quantity:1,retail_amount:1000,ppvz_for_pay:700}]);assert.equal(result.products[0].profit,null);assert.equal(result.products[0].severity,'unknown');assert.equal(result.summary.profit,null)});
 
 test('разделяет варианты по баркоду и предпочитает себестоимость баркода',()=>{const rows=[

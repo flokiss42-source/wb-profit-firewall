@@ -1,4 +1,5 @@
 const ENDPOINT = 'https://finance-api.wildberries.ru/api/finance/v1/sales-reports/detailed';
+const LEGACY_ENDPOINT = 'https://statistics-api.wildberries.ru/api/v5/supplier/reportDetailByPeriod';
 const STOCKS_ENDPOINT = 'https://seller-analytics-api.wildberries.ru/api/analytics/v1/stocks-report/wb-warehouses';
 const CARD_ENDPOINT = 'https://content-api.wildberries.ru/content/v2/get/cards/list';
 
@@ -7,32 +8,62 @@ export function validateDate(value) {
   return value;
 }
 
+async function errorDetail(response) {
+  try {
+    const payload = await response.json();
+    const value = payload?.message ?? payload?.detail ?? payload?.error ?? payload?.title;
+    return value == null ? '' : String(value).slice(0, 300);
+  } catch { return ''; }
+}
+
+function authorization(token) {
+  return /^Bearer\s/i.test(token) ? token : `Bearer ${token}`;
+}
+
 export async function fetchReport({ token, dateFrom, dateTo, fetchImpl = fetch, pageLimit = 100000, maxPages = 100 }) {
   if (!token) throw new Error('Введите read-only токен WB API');
   validateDate(dateFrom); validateDate(dateTo);
   if (dateFrom > dateTo) throw new Error('Начальная дата позже конечной');
-  const rows = []; let rrdid = 0;
-  for (let page = 0; page < maxPages; page++) {
-    const url = new URL(ENDPOINT); url.searchParams.set('rrdid',String(rrdid));
-    const response = await fetchImpl(url, { method:'POST', headers: { Authorization: token, 'Content-Type':'application/json', Accept: 'application/json' }, body: JSON.stringify({dateFrom,dateTo,limit:pageLimit,rrdid}), signal: AbortSignal.timeout(60000) });
-    if (!response.ok) {
-      if (response.status === 429) throw new Error('Лимит запросов WB исчерпан. Подождите немного; успешно загруженный период повторно берётся из памяти');
-      throw new Error(response.status === 401 || response.status === 403 ? 'WB отклонил токен: нужен доступ категории «Финансы» (ранее «Статистика»)' : `WB API вернул HTTP ${response.status}`);
+  async function load(legacy = false, financeFailure = null) {
+    const rows = []; let rrdid = 0;
+    for (let page = 0; page < maxPages; page++) {
+      const url = new URL(legacy ? LEGACY_ENDPOINT : ENDPOINT);
+      url.searchParams.set('rrdid', String(rrdid));
+      const options = { headers: { Authorization: authorization(token), Accept: 'application/json' }, signal: AbortSignal.timeout(60000) };
+      if (legacy) {
+        url.searchParams.set('dateFrom', dateFrom); url.searchParams.set('dateTo', dateTo); url.searchParams.set('limit', String(pageLimit));
+      } else {
+        options.method = 'POST'; options.headers['Content-Type'] = 'application/json'; options.body = JSON.stringify({ dateFrom, dateTo, limit: pageLimit, rrdid });
+      }
+      const response = await fetchImpl(url, options);
+      if (!response.ok) {
+        const detail = await errorDetail(response);
+        if (!legacy && page === 0 && (response.status === 401 || response.status === 403)) return load(true, { status: response.status, detail });
+        if (response.status === 429) throw new Error('Лимит запросов WB исчерпан. Подождите немного; успешно загруженный период повторно берётся из памяти');
+        if (response.status === 401 || response.status === 403) {
+          const finance = financeFailure ? `Финансы: HTTP ${financeFailure.status}${financeFailure.detail ? ` — ${financeFailure.detail}` : ''}` : '';
+          const statistics = `Статистика: HTTP ${response.status}${detail ? ` — ${detail}` : ''}`;
+          throw new Error(`WB отклонил токен. ${[finance, statistics].filter(Boolean).join('; ')}`);
+        }
+        throw new Error(`${legacy ? 'Старый' : 'Новый'} WB API вернул HTTP ${response.status}`);
+      }
+      const payload = await response.json();
+      const batch = Array.isArray(payload) ? payload : Array.isArray(payload.data) ? payload.data : Array.isArray(payload.rows) ? payload.rows : [];
+      if (!batch.length) return rows;
+      rows.push(...batch);
+      const next = Number(batch.at(-1)?.rrdId ?? batch.at(-1)?.rrd_id);
+      if (!Number.isFinite(next) || next <= rrdid) throw new Error('Ошибка пагинации WB API');
+      rrdid = next; if (batch.length < pageLimit) return rows;
     }
-    const payload = await response.json(); const batch = Array.isArray(payload) ? payload : Array.isArray(payload.data) ? payload.data : Array.isArray(payload.rows) ? payload.rows : []; if (!Array.isArray(batch)) throw new Error('WB API вернул неожиданный формат');
-    if (!batch.length) return rows;
-    rows.push(...batch);
-    const next = Number(batch.at(-1)?.rrd_id);
-    if (!Number.isFinite(next) || next <= rrdid) throw new Error('Ошибка пагинации WB API');
-    rrdid = next; if (batch.length < pageLimit) return rows;
+    throw new Error('Превышен безопасный лимит страниц WB API');
   }
-  throw new Error('Превышен безопасный лимит страниц WB API');
+  return load(false);
 }
 
 export async function fetchCurrentStocks({ token, nmIds = [], fetchImpl = fetch }) {
   if (!token) throw new Error('Введите токен WB категории «Аналитика» для остатков');
   const ids = [...new Set(nmIds.map(Number).filter(Number.isInteger).filter(id => id > 0))];
-  const response = await fetchImpl(STOCKS_ENDPOINT, { method: 'POST', headers: { Authorization: token, 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ nmIds: ids }), signal: AbortSignal.timeout(60000) });
+  const response = await fetchImpl(STOCKS_ENDPOINT, { method: 'POST', headers: { Authorization: authorization(token), 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ nmIds: ids }), signal: AbortSignal.timeout(60000) });
   if (!response.ok) {
     let detail=''; try { const body=await response.clone().json(); detail=body?.message||body?.error||''; } catch {}
     if (response.status === 429) throw new Error('WB ограничил частоту запроса остатков. Подождите 20 секунд');
@@ -47,7 +78,7 @@ export async function fetchCurrentStocks({ token, nmIds = [], fetchImpl = fetch 
 export async function fetchProductCard({ token, nmId, fetchImpl = fetch }) {
   if (!token) throw new Error('Введите токен WB категории «Контент» для фотографий');
   if (!Number.isInteger(Number(nmId)) || Number(nmId) <= 0) throw new Error('Некорректный nmID товара');
-  const response = await fetchImpl(CARD_ENDPOINT, { method: 'POST', headers: { Authorization: token, 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ settings: { cursor: { limit: 100 }, filter: { textSearch: String(nmId), withPhoto: -1 } } }), signal: AbortSignal.timeout(60000) });
+  const response = await fetchImpl(CARD_ENDPOINT, { method: 'POST', headers: { Authorization: authorization(token), 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ settings: { cursor: { limit: 100 }, filter: { textSearch: String(nmId), withPhoto: -1 } } }), signal: AbortSignal.timeout(60000) });
   if (!response.ok) {
     if (response.status === 429) throw new Error('WB ограничил запросы карточек. Подождите немного');
     if (response.status === 401 || response.status === 403) throw new Error('Нужен токен WB категории «Контент»');
