@@ -56,7 +56,8 @@ export async function fetchProductCard({ token, nmId, fetchImpl = fetch }) {
   }
   const payload = await response.json();
   const cards = Array.isArray(payload.cards) ? payload.cards : Array.isArray(payload.data) ? payload.data : [];
-  const card = cards.find(item => String(item.nmID ?? item.nmId) === String(nmId)) ?? cards[0];
+  // Never show a different seller's card when textSearch returns an inexact match.
+  const card = cards.find(item => String(item.nmID ?? item.nmId) === String(nmId));
   const photos = Array.isArray(card?.photos) ? card.photos.map(photo => String(photo.big ?? photo.c516x688 ?? photo.square ?? photo.tm ?? '')).filter(url => /^https:\/\//i.test(url)) : [];
   return { nmId: String(nmId), title: String(card?.title ?? card?.subjectName ?? ''), photos };
 }
