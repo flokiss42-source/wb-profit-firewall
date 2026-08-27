@@ -8,3 +8,18 @@ export function compareAnalyses(current,previous){const fields=['grossSales','ne
 export function simulateProduct(p,{priceChangePercent=0,adChange=0,returnRateChange=0,targetMargin=15}={}){if(p.unitCost==null||p.netUnits<=0)return{available:false,reason:'Нужны себестоимость и продажи'};const gross=p.grossSales*(1+n(priceChangePercent)/100),units=Math.max(0,p.netUnits-Math.max(0,p.sold*n(returnRateChange)/100)),net=gross*(p.grossSales>0?p.netFromWb/p.grossSales:0),ads=Math.max(0,p.ads+n(adChange)),profit=net-units*p.unitCost-ads-gross*(n(p.tax)/Math.max(1,p.grossSales)),margin=gross>0?profit/gross*100:0;return{available:true,grossSales:round(gross),profit:round(profit),margin:round(margin),verdict:profit<0?'Убыток':margin<n(targetMargin)?'Ниже цели':'Безопасно'}}
 export function evaluateRules(products,rules={}){const min=n(rules.minMargin??15),maxLog=n(rules.maxLogisticsPercent??20),maxAds=n(rules.maxAdPercent??15),alerts=[];for(const x of products){if(x.profit!=null&&x.profit<0)alerts.push({level:'critical',nmId:x.nmId,barcode:x.barcode,rule:'negative-profit',message:`Убыток ${round(Math.abs(x.profit))} ₽`});else if(x.margin!=null&&x.margin<min)alerts.push({level:'warning',nmId:x.nmId,barcode:x.barcode,rule:'low-margin',message:`Маржа ${x.margin}% ниже ${min}%`});if(x.grossSales>0&&x.logisticsShare>maxLog)alerts.push({level:'warning',nmId:x.nmId,barcode:x.barcode,rule:'high-logistics',message:'Высокая доля логистики'});if(x.grossSales>0&&x.drr>maxAds)alerts.push({level:'warning',nmId:x.nmId,barcode:x.barcode,rule:'high-ads',message:'Высокий ДРР'})}return alerts}
 export function forecastCashflow(a,{reservePercent=10,days=7}={}){const daily=a.summary.netFromWb/Math.max(1,n(days)),reserve=Math.max(0,a.summary.netFromWb*n(reservePercent)/100);return{next7Days:round(daily*7),next30Days:round(daily*30),recommendedReserve:round(reserve),availableAfterReserve:round(a.summary.netFromWb-reserve)}}
+
+export function analyzeInventory(stocks, products, days = 7) {
+  const periodDays = Math.max(1, n(days));
+  const sales = new Map(products.map(item => [`${item.nmId}:${item.barcode}`, item]));
+  return stocks.map(stock => {
+    const product = sales.get(`${stock.nmId}:${stock.barcode}`) ?? sales.get(`${stock.nmId}:`);
+    const sold = product?.sold ?? 0, dailySales = sold / periodDays;
+    const daysCover = dailySales > 0 ? stock.quantity / dailySales : null;
+    const unitCost = product?.unitCost ?? null;
+    const inventoryValue = unitCost == null ? null : round(stock.quantity * unitCost);
+    const status = stock.quantity <= 0 ? 'out' : daysCover != null && daysCover <= 7 ? 'critical' : daysCover != null && daysCover <= 14 ? 'warning' : daysCover == null ? 'unknown' : 'healthy';
+    const reorder = dailySales > 0 ? Math.max(0, Math.ceil(dailySales * 30 - stock.quantity)) : null;
+    return { ...stock, sold, dailySales: round(dailySales), daysCover: daysCover == null ? null : round(daysCover), inventoryValue, reorder, status };
+  });
+}

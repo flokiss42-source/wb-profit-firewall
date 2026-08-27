@@ -4,7 +4,7 @@ import { appendFile, mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fetchReport, fetchCurrentStocks, fetchProductCard } from './wb-api.js';
-import { analyzeReport, compareAnalyses, evaluateRules, forecastCashflow, simulateProduct } from './analyze.js';
+import { analyzeReport, analyzeInventory, compareAnalyses, evaluateRules, forecastCashflow, simulateProduct } from './analyze.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 const vendorRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'node_modules', 'xlsx', 'dist');
@@ -64,6 +64,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'POST' && req.url === '/api/simulate') { const input = await body(req); return json(res, 200, simulateProduct(input.product, input.scenario)); }
     if (req.method === 'POST' && req.url === '/api/stocks') { const input = await body(req); const stocks = await fetchCurrentStocks({ token: input.token, nmIds: input.nmIds }); return json(res, 200, { generatedAt: new Date().toISOString(), rows: stocks.length, stocks }); }
+    if (req.method === 'POST' && req.url === '/api/inventory-analysis') { const input = await body(req); return json(res, 200, { inventory: analyzeInventory(input.stocks ?? [], input.products ?? [], input.days) }); }
     if (req.method === 'POST' && req.url === '/api/product-card') { const input = await body(req); return json(res, 200, await fetchProductCard({ token: input.token, nmId: input.nmId })); }
     if (req.method === 'POST' && req.url === '/api/telegram') {
       const input = await body(req); if (!input.botToken || !input.chatId || !input.message) throw new Error('Нужны bot token, chat ID и сообщение');
