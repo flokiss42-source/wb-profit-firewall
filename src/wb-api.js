@@ -138,7 +138,7 @@ export async function fetchProductCard({ token, nmId, fetchImpl = fetch }) {
 }
 
 /** Load all seller cards for catalog enrichment (names, brands, barcodes). */
-export async function fetchProductCatalog({ token, fetchImpl = fetch, maxPages = 100 }) {
+export async function fetchProductCatalog({ token, fetchImpl = fetch, maxPages = 500 }) {
   if (!token) throw new Error('Введите токен WB категории «Контент»');
   const cards = []; let updatedAt = ''; let nmID = 0;
   for (let page = 0; page < maxPages; page++) {
