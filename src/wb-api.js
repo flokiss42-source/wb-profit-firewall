@@ -202,7 +202,8 @@ export async function fetchPrices({ token, nmIds = [], fetchImpl = fetch }) {
 export async function updatePrices({ token, data, fetchImpl = fetch }) {
   if (!token) throw new Error('Введите write-токен категории «Цены и скидки»');
   if (!Array.isArray(data) || !data.length || data.length > 1000) throw new Error('Нужен непустой список до 1000 товаров');
-  const response = await fetchImpl(`${PRICES_ENDPOINT}/api/v2/upload/task`, { method: 'POST', headers: { Authorization: authorization(token), 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ data }), signal: AbortSignal.timeout(60000) });
+  const normalizedData = data.map(item => ({ ...item, nmID: Number(item.nmID), price: Math.round(Number(item.price)), discount: Math.round(Number(item.discount)) }));
+  const response = await fetchImpl(`${PRICES_ENDPOINT}/api/v2/upload/task`, { method: 'POST', headers: { Authorization: authorization(token), 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ data: normalizedData }), signal: AbortSignal.timeout(60000) });
   return wbJson(response, 'обновления цен');
 }
 
