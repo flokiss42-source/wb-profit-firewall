@@ -97,7 +97,8 @@ const server = http.createServer(async (req, res) => {
     const data = await readFile(file); res.writeHead(200, { 'Content-Type': types[path.extname(file)] ?? 'application/octet-stream', 'Cache-Control': 'no-store' }); res.end(data);
   } catch (error) {
     if (error.code === 'ENOENT') return json(res, 404, { error: 'Не найдено' });
-    json(res, 400, { error: error.message });
+    const status = /ограничил|лимит запросов|too many requests/i.test(error.message) ? 429 : /отклонил.*(?:401|403)|нужен токен/i.test(error.message) ? 403 : 400;
+    json(res, status, { error: error.message });
   }
 });
 

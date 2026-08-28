@@ -18,8 +18,36 @@ async function errorDetail(response) {
   } catch { return ''; }
 }
 
+async function retryAfterRateLimit(response, request) {
+  if (response.status !== 429) return response;
+  const raw = response.headers?.get?.('X-RateLimit-Retry') ?? response.headers?.get?.('Retry-After');
+  const seconds = Number(raw);
+  if (!Number.isFinite(seconds) || seconds <= 0 || seconds > 10) return response;
+  await new Promise(resolve => setTimeout(resolve, seconds * 1000 + 100));
+  return request();
+}
+
 function authorization(token) {
   return /^Bearer\s/i.test(token) ? token : `Bearer ${token}`;
+}
+
+function normalizeReportRow(row) {
+  return {
+    ...row,
+    rrd_id: row.rrd_id ?? row.rrdId,
+    nm_id: row.nm_id ?? row.nmId,
+    barcode: row.barcode ?? row.sku,
+    sa_name: row.sa_name ?? row.vendorCode,
+    subject_name: row.subject_name ?? row.subjectName,
+    brand_name: row.brand_name ?? row.brandName,
+    doc_type_name: row.doc_type_name ?? row.docTypeName,
+    retail_amount: row.retail_amount ?? row.retailAmount,
+    ppvz_for_pay: row.ppvz_for_pay ?? row.forPay,
+    delivery_rub: row.delivery_rub ?? row.deliveryService,
+    storage_fee: row.storage_fee ?? row.storageFee,
+    acquiring_fee: row.acquiring_fee ?? row.acquiringFee,
+    additional_payment: row.additional_payment ?? row.additionalPayment
+  };
 }
 
 export async function fetchReport({ token, dateFrom, dateTo, fetchImpl = fetch, pageLimit = 100000, maxPages = 100 }) {
@@ -35,7 +63,7 @@ export async function fetchReport({ token, dateFrom, dateTo, fetchImpl = fetch, 
       if (legacy) {
         url.searchParams.set('dateFrom', dateFrom); url.searchParams.set('dateTo', dateTo); url.searchParams.set('limit', String(pageLimit));
       } else {
-        options.method = 'POST'; options.headers['Content-Type'] = 'application/json'; options.body = JSON.stringify({ dateFrom, dateTo, limit: pageLimit, rrdid });
+        options.method = 'POST'; options.headers['Content-Type'] = 'application/json'; options.body = JSON.stringify({ dateFrom, dateTo, limit: pageLimit, rrdId: rrdid });
       }
       const response = await fetchImpl(url, options);
       if (!response.ok) {
@@ -49,8 +77,9 @@ export async function fetchReport({ token, dateFrom, dateTo, fetchImpl = fetch, 
         }
         throw new Error(`${legacy ? 'Старый' : 'Новый'} WB API вернул HTTP ${response.status}`);
       }
+      if (response.status === 204) return rows;
       const payload = await response.json();
-      const batch = Array.isArray(payload) ? payload : Array.isArray(payload.data) ? payload.data : Array.isArray(payload.rows) ? payload.rows : [];
+      const batch = (Array.isArray(payload) ? payload : Array.isArray(payload.data) ? payload.data : Array.isArray(payload.rows) ? payload.rows : []).map(normalizeReportRow);
       if (!batch.length) return rows;
       rows.push(...batch);
       const next = Number(batch.at(-1)?.rrdId ?? batch.at(-1)?.rrd_id);
@@ -73,8 +102,10 @@ export async function fetchCurrentStocks({ token, nmIds = [], fetchImpl = fetch 
     throw new Error(`WB API остатков вернул HTTP ${response.status}`);
   }
   const payload = await response.json();
-  const rows = Array.isArray(payload) ? payload : Array.isArray(payload.data) ? payload.data : Array.isArray(payload.stocks) ? payload.stocks : [];
-  return rows.map(row => ({ nmId: String(row.nmId ?? row.nmID ?? ''), barcode: String(row.barcode ?? row.vendorCode ?? ''), warehouse: String(row.warehouseName ?? row.officeName ?? row.warehouse ?? ''), quantity: Number(row.quantity ?? row.qty ?? row.amount ?? 0) || 0, inWayToClient: Number(row.inWayToClient ?? 0) || 0, inWayFromClient: Number(row.inWayFromClient ?? 0) || 0, updatedAt: row.updatedAt ?? row.lastChangeDate ?? null }));
+  const data = payload?.data ?? payload;
+  const source = Array.isArray(data) ? data : Array.isArray(data?.stocks) ? data.stocks : Array.isArray(data?.items) ? data.items : Array.isArray(data?.rows) ? data.rows : [];
+  const rows = source.flatMap(row => Array.isArray(row.warehouses) ? row.warehouses.map(warehouse => ({ ...row, ...warehouse })) : [row]);
+  return rows.map(row => ({ nmId: String(row.nmId ?? row.nmID ?? ''), barcode: String(row.barcode ?? row.sku ?? row.vendorCode ?? ''), warehouse: String(row.warehouseName ?? row.officeName ?? row.warehouse ?? ''), quantity: Number(row.quantity ?? row.qty ?? row.amount ?? 0) || 0, inWayToClient: Number(row.inWayToClient ?? 0) || 0, inWayFromClient: Number(row.inWayFromClient ?? 0) || 0, updatedAt: row.updatedAt ?? row.lastChangeDate ?? null }));
 }
 
 export async function fetchProductCard({ token, nmId, fetchImpl = fetch }) {
@@ -96,9 +127,9 @@ export async function fetchProductCard({ token, nmId, fetchImpl = fetch }) {
 
 async function wbJson(response, label) {
   if (response.ok) return response.json();
-  let detail = ''; try { const body = await response.clone().json(); detail = body?.message || body?.error || ''; } catch {}
+  let detail = ''; try { const body = await response.clone().json(); detail = body?.message || body?.detail || body?.error || body?.title || ''; } catch {}
   if (response.status === 401 || response.status === 403) throw new Error(`WB отклонил запрос ${label} (HTTP ${response.status}). Проверьте категорию токена и доступ к кабинету`);
-  if (response.status === 429) throw new Error(`WB ограничил запросы ${label}. Повторите через минуту`);
+  if (response.status === 429) throw new Error(`WB ограничил запросы ${label}. Подождите несколько секунд и повторите`);
   throw new Error(`WB API ${label} вернул HTTP ${response.status}${detail ? `: ${detail}` : ''}`);
 }
 
@@ -108,12 +139,14 @@ export async function fetchPrices({ token, nmIds = [], fetchImpl = fetch }) {
   const headers = { Authorization: authorization(token), Accept: 'application/json' };
   const rows = [];
   if (ids.length) {
-    const response = await fetchImpl(`${PRICES_ENDPOINT}/api/v2/list/goods/filter`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ nmList: ids }), signal: AbortSignal.timeout(60000) });
+    const request = () => fetchImpl(`${PRICES_ENDPOINT}/api/v2/list/goods/filter`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ nmList: ids }), signal: AbortSignal.timeout(60000) });
+    const response = await retryAfterRateLimit(await request(), request);
     const payload = await wbJson(response, 'цен');
     rows.push(...(Array.isArray(payload) ? payload : Array.isArray(payload?.data?.listGoods) ? payload.data.listGoods : Array.isArray(payload.data) ? payload.data : []));
   } else {
     for (let offset = 0; offset < 100000; offset += 1000) {
-      const response = await fetchImpl(`${PRICES_ENDPOINT}/api/v2/list/goods/filter?limit=1000&offset=${offset}`, { headers, signal: AbortSignal.timeout(60000) });
+      const request = () => fetchImpl(`${PRICES_ENDPOINT}/api/v2/list/goods/filter?limit=1000&offset=${offset}`, { headers, signal: AbortSignal.timeout(60000) });
+      const response = await retryAfterRateLimit(await request(), request);
       const payload = await wbJson(response, 'цен');
       const batch = Array.isArray(payload?.data?.listGoods) ? payload.data.listGoods : [];
       rows.push(...batch);
@@ -141,7 +174,7 @@ export async function fetchSupplies({ token, dateFrom, dateTo, statusIDs, maxSup
   if (!token) throw new Error('Введите токен WB категории «Поставки» для сверки движения');
   const body = {};
   if (Array.isArray(statusIDs) && statusIDs.length) body.statusIDs = statusIDs;
-  if (dateFrom && dateTo) body.dates = [{ from: `${dateFrom}T00:00:00+03:00`, to: `${dateTo}T23:59:59+03:00` }];
+  if (dateFrom && dateTo) body.dates = [{ from: validateDate(dateFrom), till: validateDate(dateTo), type: 'factDate' }];
   const listResponse = await fetchImpl(`${SUPPLIES_ENDPOINT}?limit=1000&offset=0`, { method: 'POST', headers: { Authorization: authorization(token), 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(60000) });
   const payload = await wbJson(listResponse, 'списка поставок');
   const supplies = Array.isArray(payload) ? payload : Array.isArray(payload.supplies) ? payload.supplies : [];
