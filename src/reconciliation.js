@@ -4,18 +4,24 @@ function quantity(value, key) {
   return Number(value);
 }
 
-export function reconcileMovement({ shipped=0, accepted=0, sold=0, returned=0, stock=0, inTransit=0, writtenOff=0 }={}) {
-  const values = { shipped, accepted, sold, returned, stock, inTransit, writtenOff };
+export function reconcileMovement({ shipped=0, accepted=0, sold=0, returned=0, openingStock=null, stock=null, inTransit=0, writtenOff=0 }={}) {
+  const hasOpeningStock = openingStock != null && Number.isFinite(Number(openingStock));
+  const hasCurrentStock = stock != null && Number.isFinite(Number(stock));
+  const values = { shipped, accepted, sold, returned, openingStock: hasOpeningStock ? openingStock : 0, stock: hasCurrentStock ? stock : 0, inTransit, writtenOff };
   for (const [key, value] of Object.entries(values)) values[key] = quantity(value, key);
-  const expectedStock = values.accepted - values.sold + values.returned - values.writtenOff;
+  const expectedStock = values.openingStock + values.accepted - values.sold + values.returned - values.writtenOff;
   const accounted = values.stock + values.inTransit;
-  const gap = Math.round((expectedStock - accounted) * 100) / 100;
+  const canReconcileStock = hasOpeningStock && hasCurrentStock;
+  const gap = canReconcileStock ? Math.round((expectedStock - accounted) * 100) / 100 : null;
   return {
     ...values,
-    expectedStock: Math.round(expectedStock * 100) / 100,
+    openingStock: hasOpeningStock ? values.openingStock : null,
+    stock: hasCurrentStock ? values.stock : null,
+    expectedStock: hasOpeningStock ? Math.round(expectedStock * 100) / 100 : null,
     gap,
     supplyGap: Math.round((values.shipped - values.accepted) * 100) / 100,
-    status: Math.abs(gap) < 0.01 ? 'matched' : gap > 0 ? 'potential-loss' : 'extra-or-unrecorded',
+    completeness: canReconcileStock ? 'complete' : 'insufficient',
+    status: !canReconcileStock ? 'insufficient' : Math.abs(gap) < 0.01 ? 'matched' : gap > 0 ? 'potential-loss' : 'extra-or-unrecorded',
   };
 }
 
@@ -37,12 +43,13 @@ function add(records, target, field) {
 }
 
 /** Reconcile independently loaded shipment, acceptance, sales, return and stock sources. */
-export function reconcileCatalog({ shipped=[], accepted=[], sales=[], returns=[], stocks=[], writeOffs=[] }={}) {
+export function reconcileCatalog({ shipped=[], accepted=[], sales=[], returns=[], openingStocks=[], stocks=[], writeOffs=[] }={}) {
   const entries = new Map();
   add(shipped, entries, 'shipped');
   add(accepted, entries, 'accepted');
   add(sales, entries, 'sold');
   add(returns, entries, 'returned');
+  add(openingStocks, entries, 'openingStock');
   add(stocks, entries, 'stock');
   add(writeOffs, entries, 'writtenOff');
   return [...entries.values()].map(entry => ({ ...entry, ...reconcileMovement(entry) }));

@@ -94,7 +94,8 @@ export async function fetchReport({ token, dateFrom, dateTo, fetchImpl = fetch, 
 export async function fetchCurrentStocks({ token, nmIds = [], fetchImpl = fetch }) {
   if (!token) throw new Error('Введите токен WB категории «Аналитика» для остатков');
   const ids = [...new Set(nmIds.map(Number).filter(Number.isInteger).filter(id => id > 0))];
-  const response = await fetchImpl(STOCKS_ENDPOINT, { method: 'POST', headers: { Authorization: authorization(token), 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ nmIds: ids, chrtIds: [], limit: 1000, offset: 0 }), signal: AbortSignal.timeout(60000) });
+  const response = await fetchImpl(STOCKS_ENDPOINT, { method: 'POST', headers: { Authorization: authorization(token), 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ nmIds: ids.slice(0, 1000), chrtIds: [], limit: 250000, offset: 0 }), signal: AbortSignal.timeout(60000) });
+  if (response.status === 204) return [];
   if (!response.ok) {
     let detail=''; try { const body=await response.clone().json(); detail=body?.message||body?.error||''; } catch {}
     if (response.status === 429) throw new Error('WB ограничил частоту запроса остатков. Подождите 20 секунд');
@@ -122,7 +123,7 @@ export async function fetchProductCard({ token, nmId, fetchImpl = fetch }) {
   // Never show a different seller's card when textSearch returns an inexact match.
   const card = cards.find(item => String(item.nmID ?? item.nmId) === String(nmId));
   const photos = Array.isArray(card?.photos) ? card.photos.map(photo => String(photo.big ?? photo.c516x688 ?? photo.square ?? photo.tm ?? '')).filter(url => /^https:\/\//i.test(url)) : [];
-  return { nmId: String(nmId), title: String(card?.title ?? card?.subjectName ?? ''), photos };
+  return { nmId: String(nmId), title: String(card?.title ?? card?.subjectName ?? ''), description: String(card?.description ?? ''), brand: String(card?.brand ?? ''), vendorCode: String(card?.vendorCode ?? ''), subjectName: String(card?.subjectName ?? ''), dimensions: card?.dimensions ?? null, characteristics: Array.isArray(card?.characteristics) ? card.characteristics : [], sizes: Array.isArray(card?.sizes) ? card.sizes : [], photos };
 }
 
 async function wbJson(response, label) {
@@ -139,10 +140,13 @@ export async function fetchPrices({ token, nmIds = [], fetchImpl = fetch }) {
   const headers = { Authorization: authorization(token), Accept: 'application/json' };
   const rows = [];
   if (ids.length) {
-    const request = () => fetchImpl(`${PRICES_ENDPOINT}/api/v2/list/goods/filter`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ nmList: ids }), signal: AbortSignal.timeout(60000) });
-    const response = await retryAfterRateLimit(await request(), request);
-    const payload = await wbJson(response, 'цен');
-    rows.push(...(Array.isArray(payload) ? payload : Array.isArray(payload?.data?.listGoods) ? payload.data.listGoods : Array.isArray(payload.data) ? payload.data : []));
+    for (let offset = 0; offset < ids.length; offset += 1000) {
+      const nmList = ids.slice(offset, offset + 1000);
+      const request = () => fetchImpl(`${PRICES_ENDPOINT}/api/v2/list/goods/filter`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ nmList }), signal: AbortSignal.timeout(60000) });
+      const response = await retryAfterRateLimit(await request(), request);
+      const payload = await wbJson(response, 'цен');
+      rows.push(...(Array.isArray(payload) ? payload : Array.isArray(payload?.data?.listGoods) ? payload.data.listGoods : Array.isArray(payload.data) ? payload.data : []));
+    }
   } else {
     // Never let a broken/ignored offset keep the local request alive indefinitely.
     // Audited loading uses exact nmIDs above; convenience mode is intentionally one page.
