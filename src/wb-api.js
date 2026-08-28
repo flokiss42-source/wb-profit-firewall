@@ -108,7 +108,7 @@ export async function fetchPrices({ token, nmIds = [], fetchImpl = fetch }) {
   const response = await fetchImpl(`${PRICES_ENDPOINT}/api/v2/list/goods/filter`, { method: 'POST', headers: { Authorization: authorization(token), 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ nmIDs: ids }), signal: AbortSignal.timeout(60000) });
   const payload = await wbJson(response, 'цен');
   const rows = Array.isArray(payload) ? payload : Array.isArray(payload.data) ? payload.data : [];
-  return rows.map(row => ({ nmId: String(row.nmID ?? row.nmId ?? ''), price: Number(row.price ?? 0), discount: Number(row.discount ?? 0), editableSizePrice: Boolean(row.editableSizePrice) }));
+  return rows.map(row => ({ nmId: String(row.nmID ?? row.nmId ?? ''), vendorCode: String(row.vendorCode ?? ''), brand: String(row.brand ?? row.brandName ?? ''), price: Number(row.price ?? 0), discount: Number(row.discount ?? 0), discountedPrice: Number(row.discountedPrice ?? row.salePrice ?? row.price ?? 0), clubDiscount: Number(row.clubDiscount ?? 0), clientPrice: Number(row.finishedPrice ?? row.priceWithDiscount ?? row.discountedPrice ?? row.price ?? 0), editableSizePrice: Boolean(row.editableSizePrice), updatedAt: row.updatedAt ?? null }));
 }
 
 export async function updatePrices({ token, data, fetchImpl = fetch }) {
