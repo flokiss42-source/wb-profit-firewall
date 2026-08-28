@@ -131,3 +131,4 @@ function showWorkspace(name){const visible=new Set(workspaceSections[name]||work
 document.querySelectorAll('nav a[data-section]').forEach(link=>link.addEventListener('click',event=>{event.preventDefault();showWorkspace(link.dataset.section);window.scrollTo({top:0,behavior:'smooth'})}));
 showWorkspace('overview');
 const mobileFixStyle=document.createElement('style');mobileFixStyle.textContent='@media(max-width:620px){header h1{font-size:30px!important;line-height:1.1!important;white-space:normal!important;max-width:100%!important;overflow-wrap:anywhere!important}header>div{min-width:0!important}}';document.head.append(mobileFixStyle);
+const workspaceLabels={overview:'Аудит',actions:'Рекомендации',products:'Каталог',diagnostics:'Контроль остатков',tools:'Инструменты'};document.querySelectorAll('nav a[data-section]').forEach(link=>{if(workspaceLabels[link.dataset.section])link.textContent=workspaceLabels[link.dataset.section]});
