@@ -114,3 +114,8 @@ attachSellerIdentity('repricerToken','Цены и скидки');
 // Repricer must load the seller's complete price catalog, not only audited variants.
 const loadPricesFromCatalog=$('loadPrices')?.onclick;
 if(loadPricesFromCatalog){$('loadPrices').onclick=async()=>{const snapshot=lastData;if(snapshot)lastData={...snapshot,products:[]};try{return await loadPricesFromCatalog()}finally{lastData=snapshot}}}
+
+// Enrich the complete price catalog with card names and brands from Content API.
+const contentCatalogInput=document.createElement('input');contentCatalogInput.id='repricerContentToken';contentCatalogInput.type='password';contentCatalogInput.placeholder='Токен WB · Контент';$('repricerToken').parentElement.insertBefore(contentCatalogInput,$('repricerBrand'));
+const loadMergedCatalog=$('loadPrices')?.onclick;
+if(loadMergedCatalog){$('loadPrices').onclick=async()=>{const contentToken=contentCatalogInput.value.trim();if(!contentToken){message('Для полного каталога вставьте Content-токен WB','error');contentCatalogInput.focus();return}const button=$('loadPrices');button.disabled=true;button.textContent='Загрузка каталога…';$('repricerStatus').textContent='Загрузка карточек и цен…';try{const r=await fetch('/api/catalog',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contentToken,priceToken:$('repricerToken').value.trim()})}),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка загрузки каталога');repricerRows=d.products.map(x=>({...x,brand:x.brand||'Без бренда',title:x.title||x.vendorCode||`nmID ${x.nmId}`}));renderPriceGrid()}catch(error){$('repricerStatus').textContent='Ошибка';$('repricerBody').textContent=error.message}finally{button.disabled=false;button.textContent='Загрузить товары'}}}
