@@ -168,7 +168,7 @@ export async function fetchPrices({ token, nmIds = [], fetchImpl = fetch }) {
       rows.push(...batch);
       const reportedTotal = Number(payload?.data?.total ?? payload?.total);
       if (Number.isFinite(reportedTotal)) total = reportedTotal;
-      if (!batch.length || rows.length >= total || batch.length < limit || !Number.isFinite(total)) break;
+      if (!batch.length || rows.length >= total || batch.length < limit) break;
       offset += batch.length;
     }
   }
