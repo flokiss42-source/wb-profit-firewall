@@ -91,12 +91,13 @@ if($('priceFile'))$('priceFile').onchange=async e=>{
 };
 // Identify every token's seller without exposing or storing the token.
 const sellerIdentities=new Map();
-function tokenAccountHint(token){try{const part=token.replace(/^Bearer\s+/i,'').split('.')[1];const value=JSON.parse(decodeURIComponent(escape(atob(part))));return String(value.sid??value.id??value.oid??value.uid??'')}catch{return ''}}
+function tokenAccountHint(token){try{const part=token.replace(/^Bearer\s+/i,'').split('.')[1];if(!part)return '';const base64=part.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-part.length%4)%4);const bytes=Uint8Array.from(atob(base64),char=>char.charCodeAt(0));const value=JSON.parse(new TextDecoder().decode(bytes));return String(value.sid??value.id??value.oid??value.uid??'')}catch{return ''}}
 function attachSellerIdentity(inputId,caption){
   const input=$(inputId);if(!input)return;
   const wrap=input.closest('.stock-controls')||input.parentElement;
   const identity=document.createElement('small');identity.className='seller-identity';identity.textContent=caption+' · кабинет не определён';wrap.insertBefore(identity,input);
   identity.style.cssText='display:block;flex-basis:100%;order:-1;color:#64748b;font-size:10px;margin-bottom:-3px';
+  input.addEventListener('input',()=>{const hint=tokenAccountHint(input.value.trim());if(hint){identity.textContent=caption+' · ID '+hint;identity.classList.remove('error')}});
   input.addEventListener('blur',async()=>{
     const token=input.value.trim();if(token.length<20){identity.textContent=caption+' · вставьте токен для идентификации';return}
     const hint=tokenAccountHint(token);if(hint&&sellerIdentities.has(hint)){identity.textContent=caption+' · '+sellerIdentities.get(hint);return}
