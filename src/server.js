@@ -3,9 +3,10 @@ import { createHash } from 'node:crypto';
 import { appendFile, mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fetchReport, fetchCurrentStocks, fetchProductCard } from './wb-api.js';
+import { fetchReport, fetchCurrentStocks, fetchProductCard, fetchSupplies } from './wb-api.js';
 import { analyzeReport, analyzeInventory, compareAnalyses, evaluateRules, forecastCashflow, simulateProduct } from './analyze.js';
 import { findUnexplainedCharges } from './charges.js';
+import { reconcileCatalog } from './reconciliation.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 const vendorRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'node_modules', 'xlsx', 'dist');
@@ -68,6 +69,15 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && req.url === '/api/stocks') { const input = await body(req); const stocks = await fetchCurrentStocks({ token: input.token, nmIds: input.nmIds }); return json(res, 200, { generatedAt: new Date().toISOString(), rows: stocks.length, stocks }); }
     if (req.method === 'POST' && req.url === '/api/inventory-analysis') { const input = await body(req); return json(res, 200, { inventory: analyzeInventory(input.stocks ?? [], input.products ?? [], input.days) }); }
     if (req.method === 'POST' && req.url === '/api/product-card') { const input = await body(req); return json(res, 200, await fetchProductCard({ token: input.token, nmId: input.nmId })); }
+    if (req.method === 'POST' && req.url === '/api/reconciliation') {
+      const input = await body(req);
+      const supplies = await fetchSupplies({ token: input.token, dateFrom: input.dateFrom, dateTo: input.dateTo, maxSupplies: input.maxSupplies });
+      const sales = (input.products ?? []).map(product => ({ nmId: product.nmId, barcode: product.barcode, quantity: product.units ?? product.quantity ?? 0 }));
+      const stocks = (input.stocks ?? []).map(stock => ({ nmId: stock.nmId, barcode: stock.barcode, quantity: stock.quantity, inTransit: stock.inWayToClient ?? stock.inWayFromClient ?? 0 }));
+      const rows = reconcileCatalog({ shipped: supplies.rows, accepted: supplies.rows, sales, stocks });
+      const summary = { total: rows.length, matched: rows.filter(row => row.status === 'matched').length, potentialLoss: rows.filter(row => row.status === 'potential-loss').length, extra: rows.filter(row => row.status === 'extra-or-unrecorded').length, supplied: supplies.supplies.length };
+      return json(res, 200, { generatedAt: new Date().toISOString(), summary, rows });
+    }
     if (req.method === 'POST' && req.url === '/api/telegram') {
       const input = await body(req); if (!input.botToken || !input.chatId || !input.message) throw new Error('Нужны bot token, chat ID и сообщение');
       const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(input.botToken)}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: input.chatId, text: String(input.message).slice(0, 4000) }), signal: AbortSignal.timeout(30000) });

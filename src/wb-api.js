@@ -2,6 +2,7 @@ const ENDPOINT = 'https://finance-api.wildberries.ru/api/finance/v1/sales-report
 const LEGACY_ENDPOINT = 'https://statistics-api.wildberries.ru/api/v5/supplier/reportDetailByPeriod';
 const STOCKS_ENDPOINT = 'https://seller-analytics-api.wildberries.ru/api/analytics/v1/stocks-report/wb-warehouses';
 const CARD_ENDPOINT = 'https://content-api.wildberries.ru/content/v2/get/cards/list';
+const SUPPLIES_ENDPOINT = 'https://supplies-api.wildberries.ru/api/v1/supplies';
 
 export function validateDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) throw new Error(`Некорректная дата: ${value}`);
@@ -90,4 +91,32 @@ export async function fetchProductCard({ token, nmId, fetchImpl = fetch }) {
   const card = cards.find(item => String(item.nmID ?? item.nmId) === String(nmId));
   const photos = Array.isArray(card?.photos) ? card.photos.map(photo => String(photo.big ?? photo.c516x688 ?? photo.square ?? photo.tm ?? '')).filter(url => /^https:\/\//i.test(url)) : [];
   return { nmId: String(nmId), title: String(card?.title ?? card?.subjectName ?? ''), photos };
+}
+
+async function wbJson(response, label) {
+  if (response.ok) return response.json();
+  let detail = ''; try { const body = await response.clone().json(); detail = body?.message || body?.error || ''; } catch {}
+  if (response.status === 401 || response.status === 403) throw new Error(`WB отклонил запрос поставок (HTTP ${response.status}). Нужен токен категории «Поставки»`);
+  if (response.status === 429) throw new Error(`WB ограничил запросы ${label}. Повторите через минуту`);
+  throw new Error(`WB API ${label} вернул HTTP ${response.status}${detail ? `: ${detail}` : ''}`);
+}
+
+/** FBW supplies and accepted quantities. Requires a token in the «Поставки» category. */
+export async function fetchSupplies({ token, dateFrom, dateTo, statusIDs, maxSupplies = 50, fetchImpl = fetch }) {
+  if (!token) throw new Error('Введите токен WB категории «Поставки» для сверки движения');
+  const body = {};
+  if (Array.isArray(statusIDs) && statusIDs.length) body.statusIDs = statusIDs;
+  if (dateFrom && dateTo) body.dates = [{ from: `${dateFrom}T00:00:00+03:00`, to: `${dateTo}T23:59:59+03:00` }];
+  const listResponse = await fetchImpl(`${SUPPLIES_ENDPOINT}?limit=1000&offset=0`, { method: 'POST', headers: { Authorization: authorization(token), 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(60000) });
+  const payload = await wbJson(listResponse, 'списка поставок');
+  const supplies = Array.isArray(payload) ? payload : Array.isArray(payload.supplies) ? payload.supplies : [];
+  const rows = [];
+  for (const supply of supplies.slice(0, Math.max(1, Math.min(200, maxSupplies)))) {
+    const id = supply.ID ?? supply.id ?? supply.supplyID;
+    if (!id) continue;
+    const goodsResponse = await fetchImpl(`${SUPPLIES_ENDPOINT}/${encodeURIComponent(id)}/goods?limit=1000&offset=0`, { headers: { Authorization: authorization(token), Accept: 'application/json' }, signal: AbortSignal.timeout(60000) });
+    const goods = await wbJson(goodsResponse, 'товаров поставки');
+    for (const item of (Array.isArray(goods) ? goods : [])) rows.push({ supplyId: String(id), nmId: String(item.nmID ?? item.nmId ?? ''), barcode: String(item.barcode ?? ''), shipped: Number(item.quantity ?? item.supplierBoxAmount ?? 0) || 0, accepted: Number(item.acceptedQuantity ?? item.readyForSaleQuantity ?? 0) || 0, unloading: Number(item.unloadingQuantity ?? 0) || 0, supplyDate: supply.supplyDate ?? supply.factDate ?? null });
+  }
+  return { supplies: supplies.slice(0, maxSupplies), rows };
 }

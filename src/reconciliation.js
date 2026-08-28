@@ -31,7 +31,7 @@ function add(records, target, field) {
     const key = keyOf(row);
     if (!key) continue;
     const entry = target.get(key) ?? { nmId: String(row.nmId ?? row.nmID ?? row.nm_id ?? ''), barcode: String(row.barcode ?? row.sku ?? '') };
-    entry[field] = (entry[field] ?? 0) + quantity(row.quantity ?? row.amount ?? 0, field);
+    entry[field] = (entry[field] ?? 0) + quantity(row[field] ?? row.quantity ?? row.amount ?? 0, field);
     target.set(key, entry);
   }
 }
