@@ -110,3 +110,7 @@ attachSellerIdentity('token','Финансы');
 attachSellerIdentity('analyticsToken','Аналитика');
 attachSellerIdentity('suppliesToken','Поставки');
 attachSellerIdentity('repricerToken','Цены и скидки');
+
+// Repricer must load the seller's complete price catalog, not only audited variants.
+const loadPricesFromCatalog=$('loadPrices')?.onclick;
+if(loadPricesFromCatalog){$('loadPrices').onclick=async()=>{const snapshot=lastData;if(snapshot)lastData={...snapshot,products:[]};try{return await loadPricesFromCatalog()}finally{lastData=snapshot}}}
