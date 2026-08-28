@@ -7,4 +7,4 @@ test('ограничивает изменение цены и считает с�
   assert.equal(item.newPrice, 1100); assert.equal(item.status, 'ready');
 });
 test('не снижает цену конкурента без проверенной цены', () => assert.equal(buildPricePlan([{ nmId: 10, price: 1000 }], { strategy: 'competitor' })[0].status, 'skipped'));
-test('отклоняет дубли в write-плане', () => assert.throws(() => validatePricePlan([{ nmID: 1, newPrice: 100 }, { nmID: 1, newPrice: 110 }]));
+test('отклоняет дубли в write-плане', () => assert.throws(() => validatePricePlan([{ nmID: 1, newPrice: 100 }, { nmID: 1, newPrice: 110 }])));
