@@ -177,7 +177,7 @@ export async function fetchPrices({ token, nmIds = [], fetchImpl = fetch }) {
   } else {
     // Load every catalog page when WB reports the total number of goods.
     let offset = 0; const limit = 1000; let total = Infinity;
-    for (let page = 0; page < 100; page++) {
+    for (let page = 0; page < 500; page++) {
       const request = () => fetchImpl(`${PRICES_ENDPOINT}/api/v2/list/goods/filter?limit=${limit}&offset=${offset}`, { headers, signal: AbortSignal.timeout(30000) });
       const response = await retryAfterRateLimit(await request(), request);
       const payload = await wbJson(response, 'цен');
@@ -189,7 +189,8 @@ export async function fetchPrices({ token, nmIds = [], fetchImpl = fetch }) {
       offset += batch.length;
     }
   }
-  return rows.map(row => {
+  const uniqueRows = [...new Map(rows.map(row => [String(row.nmID ?? row.nmId ?? ''), row])).values()].filter(row => row.nmID ?? row.nmId);
+  return uniqueRows.map(row => {
     const sizes = Array.isArray(row.sizes) ? row.sizes : [];
     const size = sizes.find(item => Number(item.price) > 0) ?? sizes[0] ?? {};
     const price = Number(row.price ?? size.price ?? 0) || 0;
