@@ -91,6 +91,7 @@ if($('priceFile'))$('priceFile').onchange=async e=>{
 };
 // Identify every token's seller without exposing or storing the token.
 const sellerIdentities=new Map();
+function tokenAccountHint(token){try{const part=token.replace(/^Bearer\s+/i,'').split('.')[1];const value=JSON.parse(decodeURIComponent(escape(atob(part))));return String(value.uid??value.sid??value.oid??'')}catch{return ''}}
 function attachSellerIdentity(inputId,caption){
   const input=$(inputId);if(!input)return;
   const wrap=input.closest('.stock-controls')||input.parentElement;
@@ -98,8 +99,9 @@ function attachSellerIdentity(inputId,caption){
   identity.style.cssText='display:block;flex-basis:100%;order:-1;color:#64748b;font-size:10px;margin-bottom:-3px';
   input.addEventListener('blur',async()=>{
     const token=input.value.trim();if(token.length<20){identity.textContent=caption+' · вставьте токен для идентификации';return}
+    const hint=tokenAccountHint(token);if(hint&&sellerIdentities.has(hint)){identity.textContent=caption+' · '+sellerIdentities.get(hint);return}
     identity.textContent=caption+' · определяем кабинет…';
-    try{const r=await fetch('/api/seller-info',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})}),data=await r.json();if(!r.ok)throw new Error(data.error||'WB не подтвердил токен');const label=data.id?(data.name+' · ID '+data.id):data.name;sellerIdentities.set(inputId,label);identity.textContent=caption+' · '+label;const distinct=new Set([...sellerIdentities.values()].map(x=>x.split(' · ID ')[1]||x));if(distinct.size>1)document.querySelectorAll('.seller-identity').forEach(x=>x.classList.add('mismatch'));}catch(error){identity.textContent=caption+' · '+error.message;identity.classList.add('error')}
+    try{const r=await fetch('/api/seller-info',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})}),data=await r.json();if(!r.ok)throw new Error(data.error||'WB не подтвердил токен');const label=data.id?(data.name+' · ID '+data.id):data.name;sellerIdentities.set(hint||inputId,label);identity.textContent=caption+' · '+label;const distinct=new Set([...sellerIdentities.values()].map(x=>x.split(' · ID ')[1]||x));if(distinct.size>1)document.querySelectorAll('.seller-identity').forEach(x=>x.classList.add('mismatch'));}catch(error){identity.textContent=caption+' · '+error.message;identity.classList.add('error')}
   });
 }
 attachSellerIdentity('token','Финансы');
