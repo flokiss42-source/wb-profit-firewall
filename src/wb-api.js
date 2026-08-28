@@ -4,6 +4,7 @@ const STOCKS_ENDPOINT = 'https://seller-analytics-api.wildberries.ru/api/analyti
 const CARD_ENDPOINT = 'https://content-api.wildberries.ru/content/v2/get/cards/list';
 const SUPPLIES_ENDPOINT = 'https://supplies-api.wildberries.ru/api/v1/supplies';
 const PRICES_ENDPOINT = 'https://discounts-prices-api.wildberries.ru';
+const COMMON_ENDPOINT = 'https://common-api.wildberries.ru';
 
 export function validateDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) throw new Error(`Некорректная дата: ${value}`);
@@ -29,6 +30,16 @@ async function retryAfterRateLimit(response, request) {
 
 function authorization(token) {
   return /^Bearer\s/i.test(token) ? token : `Bearer ${token}`;
+}
+
+/** Return the seller name and profile ID for any non-sandbox WB token. */
+export async function fetchSellerInfo({ token, fetchImpl = fetch }) {
+  if (!token) throw new Error('Нужен токен WB');
+  const response = await fetchImpl(`${COMMON_ENDPOINT}/api/v1/seller-info`, { headers: { Authorization: authorization(token), Accept: 'application/json' }, signal: AbortSignal.timeout(30000) });
+  if (!response.ok) return wbJson(response, 'идентификации кабинета');
+  const payload = await response.json();
+  const data = payload?.data ?? payload;
+  return { name: String(data?.name ?? data?.supplierName ?? data?.sellerName ?? 'Кабинет WB'), id: String(data?.sid ?? data?.supplierId ?? data?.id ?? '') };
 }
 
 function normalizeReportRow(row) {

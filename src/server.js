@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { appendFile, mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fetchReport, fetchCurrentStocks, fetchProductCard, fetchSupplies, fetchPrices, updatePrices, fetchPriceTask } from './wb-api.js';
+import { fetchReport, fetchCurrentStocks, fetchProductCard, fetchSupplies, fetchPrices, updatePrices, fetchPriceTask, fetchSellerInfo } from './wb-api.js';
 import { analyzeReport, analyzeInventory, compareAnalyses, evaluateRules, forecastCashflow, simulateProduct } from './analyze.js';
 import { findUnexplainedCharges } from './charges.js';
 import { reconcileCatalog } from './reconciliation.js';
@@ -16,6 +16,7 @@ const dataDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..',
 const historyFile = path.join(dataDir, 'history.jsonl');
 const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml' };
 const reportCache = new Map();
+const sellerCache = new Map();
 const CACHE_TTL_MS = 10 * 60 * 1000;
 function reportCacheKey(token, dateFrom, dateTo) { return createHash('sha256').update(`${token}\0${dateFrom}\0${dateTo}`).digest('hex'); }
 async function cachedReport(input) {
@@ -65,6 +66,14 @@ const server = http.createServer(async (req, res) => {
       }
       if (input.saveHistory) await saveHistory({ generatedAt: analysis.generatedAt, period: { dateFrom: input.dateFrom, dateTo: input.dateTo }, summary: analysis.summary, products: analysis.products, alerts: analysis.alerts.length });
       return json(res, 200, analysis);
+    }
+    if (req.method === 'POST' && req.url === '/api/seller-info') {
+      const input = await body(req); if (!input.token) throw new Error('Нужен токен WB');
+      const key = createHash('sha256').update(String(input.token)).digest('hex');
+      const cached = sellerCache.get(key); if (cached && Date.now() - cached.createdAt < 60000) return json(res, 200, cached.value);
+      const value = await fetchSellerInfo({ token: input.token }); sellerCache.set(key, { createdAt: Date.now(), value });
+      if (sellerCache.size > 50) sellerCache.delete(sellerCache.keys().next().value);
+      return json(res, 200, value);
     }
     if (req.method === 'POST' && req.url === '/api/simulate') { const input = await body(req); return json(res, 200, simulateProduct(input.product, input.scenario)); }
     if (req.method === 'POST' && req.url === '/api/stocks') { const input = await body(req); const stocks = await fetchCurrentStocks({ token: input.token, nmIds: input.nmIds }); return json(res, 200, { generatedAt: new Date().toISOString(), rows: stocks.length, stocks }); }

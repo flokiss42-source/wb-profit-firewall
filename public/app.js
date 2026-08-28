@@ -89,3 +89,20 @@ if($('priceFile'))$('priceFile').onchange=async e=>{
     const valid=rows.filter(x=>/^\d+$/.test(x.nmId)&&Number.isFinite(x.price)&&x.price>0&&Number.isFinite(x.discount)&&x.discount>=0&&x.discount<=99);if(!valid.length)throw new Error('В файле нет корректных строк цены');const byId=new Map(repricerRows.map(x=>[x.nmId,x]));repricerRows=valid.map(x=>({...byId.get(x.nmId),...x,discountedPrice:Math.round(x.price*(1-x.discount/100)*100)/100}));renderPriceGrid();message('Файл загружен в предпросмотр. Изменения отправляются только из карточки товара.','success');
   }catch(error){message(error.message,'error')}finally{e.target.value=''}
 };
+// Identify every token's seller without exposing or storing the token.
+const sellerIdentities=new Map();
+function attachSellerIdentity(inputId,caption){
+  const input=$(inputId);if(!input)return;
+  const wrap=input.closest('.stock-controls')||input.parentElement;
+  const identity=document.createElement('small');identity.className='seller-identity';identity.textContent=caption+' · кабинет не определён';wrap.insertBefore(identity,input);
+  identity.style.cssText='display:block;flex-basis:100%;order:-1;color:#64748b;font-size:10px;margin-bottom:-3px';
+  input.addEventListener('blur',async()=>{
+    const token=input.value.trim();if(token.length<20){identity.textContent=caption+' · вставьте токен для идентификации';return}
+    identity.textContent=caption+' · определяем кабинет…';
+    try{const r=await fetch('/api/seller-info',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})}),data=await r.json();if(!r.ok)throw new Error(data.error||'WB не подтвердил токен');const label=data.id?(data.name+' · ID '+data.id):data.name;sellerIdentities.set(inputId,label);identity.textContent=caption+' · '+label;const distinct=new Set([...sellerIdentities.values()].map(x=>x.split(' · ID ')[1]||x));if(distinct.size>1)document.querySelectorAll('.seller-identity').forEach(x=>x.classList.add('mismatch'));}catch(error){identity.textContent=caption+' · '+error.message;identity.classList.add('error')}
+  });
+}
+attachSellerIdentity('token','Финансы');
+attachSellerIdentity('analyticsToken','Аналитика');
+attachSellerIdentity('suppliesToken','Поставки');
+attachSellerIdentity('repricerToken','Цены и скидки');
