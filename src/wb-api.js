@@ -144,14 +144,12 @@ export async function fetchPrices({ token, nmIds = [], fetchImpl = fetch }) {
     const payload = await wbJson(response, 'цен');
     rows.push(...(Array.isArray(payload) ? payload : Array.isArray(payload?.data?.listGoods) ? payload.data.listGoods : Array.isArray(payload.data) ? payload.data : []));
   } else {
-    for (let offset = 0; offset < 100000; offset += 1000) {
-      const request = () => fetchImpl(`${PRICES_ENDPOINT}/api/v2/list/goods/filter?limit=1000&offset=${offset}`, { headers, signal: AbortSignal.timeout(60000) });
-      const response = await retryAfterRateLimit(await request(), request);
-      const payload = await wbJson(response, 'цен');
-      const batch = Array.isArray(payload?.data?.listGoods) ? payload.data.listGoods : [];
-      rows.push(...batch);
-      if (batch.length < 1000) break;
-    }
+    // Never let a broken/ignored offset keep the local request alive indefinitely.
+    // Audited loading uses exact nmIDs above; convenience mode is intentionally one page.
+    const request = () => fetchImpl(`${PRICES_ENDPOINT}/api/v2/list/goods/filter?limit=1000&offset=0`, { headers, signal: AbortSignal.timeout(30000) });
+    const response = await retryAfterRateLimit(await request(), request);
+    const payload = await wbJson(response, 'цен');
+    rows.push(...(Array.isArray(payload?.data?.listGoods) ? payload.data.listGoods : []));
   }
   return rows.map(row => {
     const sizes = Array.isArray(row.sizes) ? row.sizes : [];
