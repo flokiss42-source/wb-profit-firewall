@@ -97,7 +97,7 @@ export async function fetchProductCard({ token, nmId, fetchImpl = fetch }) {
 async function wbJson(response, label) {
   if (response.ok) return response.json();
   let detail = ''; try { const body = await response.clone().json(); detail = body?.message || body?.error || ''; } catch {}
-  if (response.status === 401 || response.status === 403) throw new Error(`WB отклонил запрос поставок (HTTP ${response.status}). Нужен токен категории «Поставки»`);
+  if (response.status === 401 || response.status === 403) throw new Error(`WB отклонил запрос ${label} (HTTP ${response.status}). Проверьте категорию токена и доступ к кабинету`);
   if (response.status === 429) throw new Error(`WB ограничил запросы ${label}. Повторите через минуту`);
   throw new Error(`WB API ${label} вернул HTTP ${response.status}${detail ? `: ${detail}` : ''}`);
 }
@@ -105,9 +105,21 @@ async function wbJson(response, label) {
 export async function fetchPrices({ token, nmIds = [], fetchImpl = fetch }) {
   if (!token) throw new Error('Введите токен WB категории «Цены и скидки»');
   const ids = [...new Set(nmIds.map(Number).filter(Number.isInteger).filter(id => id > 0))];
-  const response = await fetchImpl(`${PRICES_ENDPOINT}/api/v2/list/goods/filter`, { method: 'POST', headers: { Authorization: authorization(token), 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ nmList: ids }), signal: AbortSignal.timeout(60000) });
-  const payload = await wbJson(response, 'цен');
-  const rows = Array.isArray(payload) ? payload : Array.isArray(payload?.data?.listGoods) ? payload.data.listGoods : Array.isArray(payload.data) ? payload.data : [];
+  const headers = { Authorization: authorization(token), Accept: 'application/json' };
+  const rows = [];
+  if (ids.length) {
+    const response = await fetchImpl(`${PRICES_ENDPOINT}/api/v2/list/goods/filter`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ nmList: ids }), signal: AbortSignal.timeout(60000) });
+    const payload = await wbJson(response, 'цен');
+    rows.push(...(Array.isArray(payload) ? payload : Array.isArray(payload?.data?.listGoods) ? payload.data.listGoods : Array.isArray(payload.data) ? payload.data : []));
+  } else {
+    for (let offset = 0; offset < 100000; offset += 1000) {
+      const response = await fetchImpl(`${PRICES_ENDPOINT}/api/v2/list/goods/filter?limit=1000&offset=${offset}`, { headers, signal: AbortSignal.timeout(60000) });
+      const payload = await wbJson(response, 'цен');
+      const batch = Array.isArray(payload?.data?.listGoods) ? payload.data.listGoods : [];
+      rows.push(...batch);
+      if (batch.length < 1000) break;
+    }
+  }
   return rows.map(row => {
     const sizes = Array.isArray(row.sizes) ? row.sizes : [];
     const size = sizes.find(item => Number(item.price) > 0) ?? sizes[0] ?? {};
