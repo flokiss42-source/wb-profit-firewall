@@ -167,6 +167,26 @@ export async function updatePrices({ token, data, fetchImpl = fetch }) {
   return wbJson(response, 'обновления цен');
 }
 
+export async function fetchPriceTask({ token, uploadID, fetchImpl = fetch }) {
+  if (!token) throw new Error('Введите токен категории «Цены и скидки»');
+  if (!Number.isInteger(Number(uploadID)) || Number(uploadID) <= 0) throw new Error('Некорректный ID загрузки цен');
+  const headers = { Authorization: authorization(token), Accept: 'application/json' };
+  const historyUrl = `${PRICES_ENDPOINT}/api/v2/history/goods/task?limit=1000&offset=0&uploadID=${encodeURIComponent(uploadID)}`;
+  const history = await fetchImpl(historyUrl, { headers, signal: AbortSignal.timeout(30000) });
+  if (history.ok) {
+    const payload = await history.json();
+    return { stage: 'processed', uploadID: Number(uploadID), goods: payload?.data?.historyGoods ?? [] };
+  }
+  const bufferUrl = `${PRICES_ENDPOINT}/api/v2/buffer/goods/task?limit=1000&offset=0&uploadID=${encodeURIComponent(uploadID)}`;
+  const buffer = await fetchImpl(bufferUrl, { headers, signal: AbortSignal.timeout(30000) });
+  if (buffer.ok) {
+    const payload = await buffer.json();
+    return { stage: 'processing', uploadID: Number(uploadID), goods: payload?.data?.bufferGoods ?? [] };
+  }
+  if ([400,404].includes(history.status) && [400,404].includes(buffer.status)) return { stage: 'queued', uploadID: Number(uploadID), goods: [] };
+  return wbJson(buffer, 'статуса изменения цен');
+}
+
 /** FBW supplies and accepted quantities. Requires a token in the «Поставки» category. */
 export async function fetchSupplies({ token, dateFrom, dateTo, statusIDs, maxSupplies = 50, fetchImpl = fetch }) {
   if (!token) throw new Error('Введите токен WB категории «Поставки» для сверки движения');

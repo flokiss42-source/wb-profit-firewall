@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { appendFile, mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fetchReport, fetchCurrentStocks, fetchProductCard, fetchSupplies, fetchPrices, updatePrices } from './wb-api.js';
+import { fetchReport, fetchCurrentStocks, fetchProductCard, fetchSupplies, fetchPrices, updatePrices, fetchPriceTask } from './wb-api.js';
 import { analyzeReport, analyzeInventory, compareAnalyses, evaluateRules, forecastCashflow, simulateProduct } from './analyze.js';
 import { findUnexplainedCharges } from './charges.js';
 import { reconcileCatalog } from './reconciliation.js';
@@ -84,6 +84,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && req.url === '/api/repricer/plan') { const input = await body(req); const prices = await fetchPrices({ token: input.token, nmIds: (input.products ?? []).map(x => x.nmId) }); const byId = new Map(prices.map(x => [x.nmId, x])); return json(res, 200, { plan: buildPricePlan((input.products ?? []).map(x => ({ ...x, ...(byId.get(String(x.nmId)) ?? {}) })), input) }); }
     if (req.method === 'POST' && req.url === '/api/prices') { const input = await body(req); return json(res, 200, { prices: await fetchPrices({ token: input.token, nmIds: input.nmIds ?? [] }) }); }
     if (req.method === 'POST' && req.url === '/api/repricer/apply') { const input = await body(req); if (input.confirm !== 'APPLY') throw new Error('Для изменения цен передайте confirm=APPLY'); const plan = validatePricePlan((input.plan ?? []).filter(x => x.status === 'ready')); if (plan.some(x => x.oldPrice && Math.abs(x.newPrice / x.oldPrice - 1) > 0.2)) throw new Error('Изменение больше 20% заблокировано защитой'); const result = await updatePrices({ token: input.token, data: plan.map(x => ({ nmID: x.nmID, price: x.newPrice, discount: x.discount })) }); return json(res, 200, { result, applied: plan.length, plan }); }
+    if (req.method === 'POST' && req.url === '/api/repricer/status') { const input = await body(req); return json(res, 200, await fetchPriceTask({ token: input.token, uploadID: input.uploadID })); }
     if (req.method === 'POST' && req.url === '/api/telegram') {
       const input = await body(req); if (!input.botToken || !input.chatId || !input.message) throw new Error('Нужны bot token, chat ID и сообщение');
       const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(input.botToken)}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: input.chatId, text: String(input.message).slice(0, 4000) }), signal: AbortSignal.timeout(30000) });
