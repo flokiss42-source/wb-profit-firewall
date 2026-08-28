@@ -151,9 +151,8 @@ export async function fetchPrices({ token, nmIds = [], fetchImpl = fetch }) {
   const headers = { Authorization: authorization(token), Accept: 'application/json' };
   const rows = [];
   if (ids.length) {
-    for (let offset = 0; offset < ids.length; offset += 1000) {
-      const nmList = ids.slice(offset, offset + 1000);
-      const request = () => fetchImpl(`${PRICES_ENDPOINT}/api/v2/list/goods/filter`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ nmList }), signal: AbortSignal.timeout(60000) });
+    for (const nmId of ids) {
+      const request = () => fetchImpl(`${PRICES_ENDPOINT}/api/v2/list/goods/filter?filterNmID=${encodeURIComponent(nmId)}`, { headers, signal: AbortSignal.timeout(60000) });
       const response = await retryAfterRateLimit(await request(), request);
       const payload = await wbJson(response, 'цен');
       rows.push(...(Array.isArray(payload) ? payload : Array.isArray(payload?.data?.listGoods) ? payload.data.listGoods : Array.isArray(payload.data) ? payload.data : []));
