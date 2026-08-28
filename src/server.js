@@ -73,11 +73,13 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && req.url === '/api/reconciliation') {
       const input = await body(req);
       const supplies = await fetchSupplies({ token: input.token, dateFrom: input.dateFrom, dateTo: input.dateTo, maxSupplies: input.maxSupplies });
-      const sales = (input.products ?? []).map(product => ({ nmId: product.nmId, barcode: product.barcode, quantity: product.units ?? product.quantity ?? 0 }));
-      const stocks = (input.stocks ?? []).map(stock => ({ nmId: stock.nmId, barcode: stock.barcode, quantity: stock.quantity, inTransit: stock.inWayToClient ?? stock.inWayFromClient ?? 0 }));
-      const rows = reconcileCatalog({ shipped: supplies.rows, accepted: supplies.rows, sales, stocks });
+      const sales = (input.products ?? []).map(product => ({ nmId: product.nmId, barcode: product.barcode, quantity: product.sold ?? product.quantity ?? 0 }));
+      const returns = (input.products ?? []).map(product => ({ nmId: product.nmId, barcode: product.barcode, quantity: product.returned ?? 0 }));
+      const stocks = (input.stocks ?? []).map(stock => ({ nmId: stock.nmId, barcode: stock.barcode, quantity: stock.quantity, inTransit: Number(stock.inWayToClient ?? 0) + Number(stock.inWayFromClient ?? 0) }));
+      const rows = reconcileCatalog({ shipped: supplies.rows, accepted: supplies.rows, sales, returns, stocks });
       const summary = { total: rows.length, matched: rows.filter(row => row.status === 'matched').length, potentialLoss: rows.filter(row => row.status === 'potential-loss').length, extra: rows.filter(row => row.status === 'extra-or-unrecorded').length, supplied: supplies.supplies.length };
-      return json(res, 200, { generatedAt: new Date().toISOString(), summary, rows });
+      const supplyList = supplies.supplies.map(item => ({ id: String(item.supplyID ?? item.ID ?? item.id ?? item.preorderID ?? ''), statusID: item.statusID ?? null, supplyDate: item.supplyDate ?? null, factDate: item.factDate ?? null, warehouseName: item.actualWarehouseName ?? item.warehouseName ?? '', quantity: Number(item.quantity ?? 0), accepted: Number(item.acceptedQuantity ?? 0) }));
+      return json(res, 200, { generatedAt: new Date().toISOString(), summary, supplies: supplyList, rows });
     }
     if (req.method === 'POST' && req.url === '/api/repricer/plan') { const input = await body(req); const prices = await fetchPrices({ token: input.token, nmIds: (input.products ?? []).map(x => x.nmId) }); const byId = new Map(prices.map(x => [x.nmId, x])); return json(res, 200, { plan: buildPricePlan((input.products ?? []).map(x => ({ ...x, ...(byId.get(String(x.nmId)) ?? {}) })), input) }); }
     if (req.method === 'POST' && req.url === '/api/prices') { const input = await body(req); return json(res, 200, { prices: await fetchPrices({ token: input.token, nmIds: input.nmIds ?? [] }) }); }
