@@ -3,6 +3,7 @@ const LEGACY_ENDPOINT = 'https://statistics-api.wildberries.ru/api/v5/supplier/r
 const STOCKS_ENDPOINT = 'https://seller-analytics-api.wildberries.ru/api/analytics/v1/stocks-report/wb-warehouses';
 const CARD_ENDPOINT = 'https://content-api.wildberries.ru/content/v2/get/cards/list';
 const SUPPLIES_ENDPOINT = 'https://supplies-api.wildberries.ru/api/v1/supplies';
+const PRICES_ENDPOINT = 'https://discounts-prices-api.wildberries.ru';
 
 export function validateDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) throw new Error(`Некорректная дата: ${value}`);
@@ -99,6 +100,22 @@ async function wbJson(response, label) {
   if (response.status === 401 || response.status === 403) throw new Error(`WB отклонил запрос поставок (HTTP ${response.status}). Нужен токен категории «Поставки»`);
   if (response.status === 429) throw new Error(`WB ограничил запросы ${label}. Повторите через минуту`);
   throw new Error(`WB API ${label} вернул HTTP ${response.status}${detail ? `: ${detail}` : ''}`);
+}
+
+export async function fetchPrices({ token, nmIds = [], fetchImpl = fetch }) {
+  if (!token) throw new Error('Введите токен WB категории «Цены и скидки»');
+  const ids = [...new Set(nmIds.map(Number).filter(Number.isInteger).filter(id => id > 0))];
+  const response = await fetchImpl(`${PRICES_ENDPOINT}/api/v2/list/goods/filter`, { method: 'POST', headers: { Authorization: authorization(token), 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ nmIDs: ids }), signal: AbortSignal.timeout(60000) });
+  const payload = await wbJson(response, 'цен');
+  const rows = Array.isArray(payload) ? payload : Array.isArray(payload.data) ? payload.data : [];
+  return rows.map(row => ({ nmId: String(row.nmID ?? row.nmId ?? ''), price: Number(row.price ?? 0), discount: Number(row.discount ?? 0), editableSizePrice: Boolean(row.editableSizePrice) }));
+}
+
+export async function updatePrices({ token, data, fetchImpl = fetch }) {
+  if (!token) throw new Error('Введите write-токен категории «Цены и скидки»');
+  if (!Array.isArray(data) || !data.length || data.length > 1000) throw new Error('Нужен непустой список до 1000 товаров');
+  const response = await fetchImpl(`${PRICES_ENDPOINT}/api/v2/upload/task`, { method: 'POST', headers: { Authorization: authorization(token), 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ data }), signal: AbortSignal.timeout(60000) });
+  return wbJson(response, 'обновления цен');
 }
 
 /** FBW supplies and accepted quantities. Requires a token in the «Поставки» category. */
