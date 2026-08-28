@@ -2,6 +2,7 @@ const $=id=>document.getElementById(id),rub=v=>v==null?'—':`${new Intl.NumberF
 const today=new Date(),week=new Date(today);week.setDate(today.getDate()-7);$('dateTo').value=today.toISOString().slice(0,10);$('dateFrom').value=week.toISOString().slice(0,10);$('settingsButton').onclick=()=>$('setup').classList.toggle('expanded');
 // Excel parser is served locally by the app; files never leave the browser.
 $('costFile').accept='.csv,.xls,.xlsx';
+$('costFile').nextElementSibling.textContent='CSV/XLS/XLSX: колонки «баркод или nmID» и «себестоимость»';
 const xlsxReady=new Promise((resolve,reject)=>{if(window.XLSX)return resolve();const script=document.createElement('script');script.src='/vendor/xlsx.full.min.js';script.onload=resolve;script.onerror=reject;document.head.append(script)});
 const navLinks=[...document.querySelectorAll('nav a[data-section]')];
 function activateNav(section){navLinks.forEach(link=>link.classList.toggle('active',link.dataset.section===section))}
