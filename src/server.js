@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { appendFile, mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fetchReport, fetchCurrentStocks, fetchProductCard, fetchSupplies, fetchPrices, updatePrices, fetchPriceTask, fetchSellerInfo } from './wb-api.js';
+import { fetchReport, fetchCurrentStocks, fetchProductCard, fetchProductCatalog, fetchSupplies, fetchPrices, updatePrices, fetchPriceTask, fetchSellerInfo } from './wb-api.js';
 import { analyzeReport, analyzeInventory, compareAnalyses, evaluateRules, forecastCashflow, simulateProduct } from './analyze.js';
 import { findUnexplainedCharges } from './charges.js';
 import { reconcileCatalog } from './reconciliation.js';
@@ -79,6 +79,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && req.url === '/api/stocks') { const input = await body(req); const stocks = await fetchCurrentStocks({ token: input.token, nmIds: input.nmIds }); return json(res, 200, { generatedAt: new Date().toISOString(), rows: stocks.length, stocks }); }
     if (req.method === 'POST' && req.url === '/api/inventory-analysis') { const input = await body(req); return json(res, 200, { inventory: analyzeInventory(input.stocks ?? [], input.products ?? [], input.days) }); }
     if (req.method === 'POST' && req.url === '/api/product-card') { const input = await body(req); return json(res, 200, await fetchProductCard({ token: input.token, nmId: input.nmId })); }
+    if (req.method === 'POST' && req.url === '/api/catalog') { const input = await body(req); const [cards, prices] = await Promise.all([fetchProductCatalog({ token: input.contentToken }), fetchPrices({ token: input.priceToken, nmIds: [] })]); const byId = new Map(prices.map(item => [item.nmId, item])); return json(res, 200, { products: cards.map(card => ({ ...card, ...(byId.get(card.nmId) ?? { nmId: card.nmId, price: 0, discount: 0, discountedPrice: 0, clientPrice: 0 }) })) }); }
     if (req.method === 'POST' && req.url === '/api/reconciliation') {
       const input = await body(req);
       const supplies = await fetchSupplies({ token: input.token, dateFrom: input.dateFrom, dateTo: input.dateTo, maxSupplies: input.maxSupplies });

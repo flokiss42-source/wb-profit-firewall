@@ -137,6 +137,23 @@ export async function fetchProductCard({ token, nmId, fetchImpl = fetch }) {
   return { nmId: String(nmId), title: String(card?.title ?? card?.subjectName ?? ''), description: String(card?.description ?? ''), brand: String(card?.brand ?? ''), vendorCode: String(card?.vendorCode ?? ''), subjectName: String(card?.subjectName ?? ''), dimensions: card?.dimensions ?? null, characteristics: Array.isArray(card?.characteristics) ? card.characteristics : [], sizes: Array.isArray(card?.sizes) ? card.sizes : [], photos };
 }
 
+/** Load all seller cards for catalog enrichment (names, brands, barcodes). */
+export async function fetchProductCatalog({ token, fetchImpl = fetch, maxPages = 100 }) {
+  if (!token) throw new Error('Введите токен WB категории «Контент»');
+  const cards = []; let updatedAt = ''; let nmID = 0;
+  for (let page = 0; page < maxPages; page++) {
+    const response = await fetchImpl(CARD_ENDPOINT, { method: 'POST', headers: { Authorization: authorization(token), 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ settings: { cursor: { limit: 100, updatedAt, nmID }, filter: { withPhoto: -1 } } }), signal: AbortSignal.timeout(60000) });
+    const payload = await wbJson(response, 'каталога карточек');
+    const batch = Array.isArray(payload?.cards) ? payload.cards : [];
+    if (!batch.length) break;
+    cards.push(...batch);
+    const cursor = payload?.cursor ?? payload?.data?.cursor;
+    if (!cursor || batch.length < 100) break;
+    updatedAt = String(cursor.updatedAt ?? ''); nmID = Number(cursor.nmID ?? 0) || 0;
+  }
+  return cards.map(card => ({ nmId: String(card.nmID ?? card.nmId ?? ''), title: String(card.title ?? ''), brand: String(card.brand ?? ''), vendorCode: String(card.vendorCode ?? ''), barcode: String(card.sizes?.[0]?.skus?.[0] ?? card.barcode ?? '') }));
+}
+
 async function wbJson(response, label) {
   if (response.ok) return response.json();
   let detail = ''; try { const body = await response.clone().json(); detail = body?.message || body?.detail || body?.error || body?.title || ''; } catch {}
