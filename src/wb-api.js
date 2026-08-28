@@ -151,7 +151,7 @@ export async function fetchProductCatalog({ token, fetchImpl = fetch, maxPages =
     if (!cursor || batch.length < 100) break;
     updatedAt = String(cursor.updatedAt ?? ''); nmID = Number(cursor.nmID ?? 0) || 0;
   }
-  return cards.map(card => ({ nmId: String(card.nmID ?? card.nmId ?? ''), title: String(card.title ?? ''), brand: String(card.brand ?? ''), vendorCode: String(card.vendorCode ?? ''), barcode: String(card.sizes?.[0]?.skus?.[0] ?? card.barcode ?? '') }));
+  return cards.map(card => ({ nmId: String(card.nmID ?? card.nmId ?? ''), title: String(card.title ?? ''), brand: String(card.brand ?? card.brandName ?? card.supplier ?? ''), vendorCode: String(card.vendorCode ?? ''), barcode: String(card.sizes?.[0]?.skus?.[0] ?? card.barcode ?? '') }));
 }
 
 async function wbJson(response, label) {
