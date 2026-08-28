@@ -65,7 +65,7 @@ export async function fetchReport({ token, dateFrom, dateTo, fetchImpl = fetch, 
 export async function fetchCurrentStocks({ token, nmIds = [], fetchImpl = fetch }) {
   if (!token) throw new Error('Введите токен WB категории «Аналитика» для остатков');
   const ids = [...new Set(nmIds.map(Number).filter(Number.isInteger).filter(id => id > 0))];
-  const response = await fetchImpl(STOCKS_ENDPOINT, { method: 'POST', headers: { Authorization: authorization(token), 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ nmIds: ids }), signal: AbortSignal.timeout(60000) });
+  const response = await fetchImpl(STOCKS_ENDPOINT, { method: 'POST', headers: { Authorization: authorization(token), 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ nmIds: ids, chrtIds: [], limit: 1000, offset: 0 }), signal: AbortSignal.timeout(60000) });
   if (!response.ok) {
     let detail=''; try { const body=await response.clone().json(); detail=body?.message||body?.error||''; } catch {}
     if (response.status === 429) throw new Error('WB ограничил частоту запроса остатков. Подождите 20 секунд');
@@ -105,10 +105,16 @@ async function wbJson(response, label) {
 export async function fetchPrices({ token, nmIds = [], fetchImpl = fetch }) {
   if (!token) throw new Error('Введите токен WB категории «Цены и скидки»');
   const ids = [...new Set(nmIds.map(Number).filter(Number.isInteger).filter(id => id > 0))];
-  const response = await fetchImpl(`${PRICES_ENDPOINT}/api/v2/list/goods/filter`, { method: 'POST', headers: { Authorization: authorization(token), 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ nmIDs: ids }), signal: AbortSignal.timeout(60000) });
+  const response = await fetchImpl(`${PRICES_ENDPOINT}/api/v2/list/goods/filter`, { method: 'POST', headers: { Authorization: authorization(token), 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ nmList: ids }), signal: AbortSignal.timeout(60000) });
   const payload = await wbJson(response, 'цен');
-  const rows = Array.isArray(payload) ? payload : Array.isArray(payload.data) ? payload.data : [];
-  return rows.map(row => ({ nmId: String(row.nmID ?? row.nmId ?? ''), vendorCode: String(row.vendorCode ?? ''), brand: String(row.brand ?? row.brandName ?? ''), price: Number(row.price ?? 0), discount: Number(row.discount ?? 0), discountedPrice: Number(row.discountedPrice ?? row.salePrice ?? row.price ?? 0), clubDiscount: Number(row.clubDiscount ?? 0), clientPrice: Number(row.finishedPrice ?? row.priceWithDiscount ?? row.discountedPrice ?? row.price ?? 0), editableSizePrice: Boolean(row.editableSizePrice), updatedAt: row.updatedAt ?? null }));
+  const rows = Array.isArray(payload) ? payload : Array.isArray(payload?.data?.listGoods) ? payload.data.listGoods : Array.isArray(payload.data) ? payload.data : [];
+  return rows.map(row => {
+    const sizes = Array.isArray(row.sizes) ? row.sizes : [];
+    const size = sizes.find(item => Number(item.price) > 0) ?? sizes[0] ?? {};
+    const price = Number(row.price ?? size.price ?? 0) || 0;
+    const discountedPrice = Number(row.discountedPrice ?? size.discountedPrice ?? row.salePrice ?? price) || 0;
+    return { nmId: String(row.nmID ?? row.nmId ?? ''), vendorCode: String(row.vendorCode ?? ''), brand: String(row.brand ?? row.brandName ?? ''), price, discount: Number(row.discount ?? 0), discountedPrice, clubDiscount: Number(row.clubDiscount ?? 0), clientPrice: Number(row.finishedPrice ?? row.priceWithDiscount ?? size.clubDiscountedPrice ?? discountedPrice) || 0, editableSizePrice: Boolean(row.editableSizePrice), updatedAt: row.updatedAt ?? null };
+  });
 }
 
 export async function updatePrices({ token, data, fetchImpl = fetch }) {

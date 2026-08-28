@@ -6,3 +6,4 @@ reports/
 *.xlsx
 *.log
 *-check.png
+full-*.png
