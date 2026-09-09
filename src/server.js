@@ -106,13 +106,13 @@ const server = http.createServer(async (req, res) => {
       if (!response.ok) throw new Error(`Telegram вернул HTTP ${response.status}`); return json(res, 200, { ok: true });
     }
     if (req.method === 'POST' && req.url === '/api/history') { const input = await body(req); return json(res, 200, historyForAccount(await readHistory(), input.token)); }
-    if (req.method !== 'GET') return json(res, 405, { error: 'Метод не поддерживается' });
+    if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 405, { error: 'Метод не поддерживается' });
     const pathname = new URL(req.url, 'http://localhost').pathname;
-    if (pathname === '/vendor/xlsx.full.min.js') { const data = await readFile(path.join(vendorRoot, 'xlsx.full.min.js')); res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=86400' }); return res.end(data); }
+    if (pathname === '/vendor/xlsx.full.min.js') { const data = await readFile(path.join(vendorRoot, 'xlsx.full.min.js')); res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=86400' }); return res.end(req.method === 'HEAD' ? undefined : data); }
     const relative = pathname === '/' ? 'index.html' : pathname.slice(1);
     const file = path.resolve(root, relative);
     if (!file.startsWith(`${root}${path.sep}`)) return json(res, 403, { error: 'Запрещено' });
-    const data = await readFile(file); res.writeHead(200, { 'Content-Type': types[path.extname(file)] ?? 'application/octet-stream', 'Cache-Control': 'no-store' }); res.end(data);
+    const data = await readFile(file); res.writeHead(200, { 'Content-Type': types[path.extname(file)] ?? 'application/octet-stream', 'Cache-Control': 'no-store' }); res.end(req.method === 'HEAD' ? undefined : data);
   } catch (error) {
     if (error.code === 'ENOENT') return json(res, 404, { error: 'Не найдено' });
     const status = /ограничил|лимит запросов|too many requests/i.test(error.message) ? 429 : /отклонил.*(?:401|403)|нужен токен/i.test(error.message) ? 403 : 400;
