@@ -6,8 +6,9 @@ import { createInterface } from 'node:readline/promises';
 
 const chromePath = process.env.CHROME_PATH ?? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const url = process.env.WB_PROFIT_URL ?? 'https://profit.46-8-98-79.sslip.io';
+const demo = new URL(url).searchParams.has('demo');
 const profile = await mkdtemp(path.join(tmpdir(), 'wb-profit-ui-'));
-const port = 9334;
+const port = 10000 + Math.floor(Math.random() * 40000);
 const chrome = spawn(chromePath, ['--headless=new', '--disable-gpu', '--disable-extensions', '--no-first-run', `--remote-debugging-port=${port}`, '--remote-allow-origins=*', `--user-data-dir=${profile}`, '--window-size=1440,1000', url], { stdio: 'ignore' });
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -40,7 +41,7 @@ try {
   for (let attempt = 0; attempt < 80; attempt++) {
     try { pages = await (await fetch(`http://127.0.0.1:${port}/json`)).json(); break; } catch { await delay(250); }
   }
-  const page = pages?.find((item) => item.type === 'page' && item.url.startsWith(url));
+  const page = pages?.find((item) => item.type === 'page' && item.url.startsWith(new URL(url).origin));
   if (!page) throw new Error('Chrome page was not created');
   socket = new WebSocket(page.webSocketDebuggerUrl);
   await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
@@ -53,18 +54,22 @@ try {
   await command('Runtime.enable');
   await waitFor("document.readyState==='complete' && typeof document.getElementById('analyze')?.onclick==='function'");
 
-  const guarded = await evaluate("document.querySelector('nav [data-section=actions]').click();document.getElementById('setup').classList.contains('workspace-hidden')===false");
-  if (!guarded) throw new Error('Pre-audit navigation guard failed');
+  if (!demo) {
+    const guarded = await evaluate("document.querySelector('nav [data-section=actions]').click();document.getElementById('setup').classList.contains('workspace-hidden')===false");
+    if (!guarded) throw new Error('Pre-audit navigation guard failed');
+  }
 
-  const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
-  const token = (process.env.WB_PROFIT_TOKEN ?? await rl.question('WB token: ')).trim(); rl.close();
-  if (!token) throw new Error('Token is required');
-  await evaluate(`document.getElementById('token').value=${JSON.stringify(token)};document.getElementById('compare').checked=false;document.getElementById('analyze').click();true`);
-  const result = await waitFor("document.getElementById('message').className==='success'?document.getElementById('message').textContent:document.getElementById('message').className==='error'?('ERROR:'+document.getElementById('message').textContent):''");
-  if (result.startsWith('ERROR:')) throw new Error(result);
+  if (!demo) {
+    const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
+    const token = (process.env.WB_PROFIT_TOKEN ?? await rl.question('WB token: ')).trim(); rl.close();
+    if (!token) throw new Error('Token is required');
+    await evaluate(`document.getElementById('token').value=${JSON.stringify(token)};document.getElementById('compare').checked=false;document.getElementById('analyze').click();true`);
+    const result = await waitFor("document.getElementById('message').className==='success'?document.getElementById('message').textContent:document.getElementById('message').className==='error'?('ERROR:'+document.getElementById('message').textContent):''");
+    if (result.startsWith('ERROR:')) throw new Error(result);
+  }
 
   const checks = {};
-  checks.provenance = await evaluate("document.getElementById('dataProvenance').textContent.includes('Источник:')&&!document.getElementById('dataProvenance').textContent.includes('демо-данные')");
+  checks.provenance = await evaluate(`document.getElementById('dataProvenance').textContent.includes('Источник:')${demo?'':"&&!document.getElementById('dataProvenance').textContent.includes('демо-данные')"}`);
   for (const section of ['overview', 'actions', 'products', 'diagnostics', 'tools']) {
     checks[section] = await evaluate(`document.querySelector('nav [data-section=${section}]').click();document.querySelector('nav [data-section=${section}]').classList.contains('active')`);
   }
@@ -74,12 +79,13 @@ try {
   if (Object.values(checks).some((value) => !value)) throw new Error(`UI checks failed: ${JSON.stringify(checks)}`);
 
   await command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-  await command('Page.reload', { ignoreCache: true });
-  await waitFor("document.readyState==='complete'");
-  const mobile = await evaluate("({viewport:innerWidth,scrollWidth:document.documentElement.scrollWidth,setupWidth:Math.round(document.getElementById('setup').getBoundingClientRect().width)})");
+  await evaluate("document.querySelector('nav [data-section=products]').click();true");
+  const mobile = await evaluate("({viewport:innerWidth,scrollWidth:document.documentElement.scrollWidth,setupWidth:Math.round(document.getElementById('setup').getBoundingClientRect().width),tableClient:document.getElementById('tableWrap').clientWidth,tableScroll:document.getElementById('tableWrap').scrollWidth})");
   if (mobile.scrollWidth > mobile.viewport) throw new Error(`Mobile overflow: ${JSON.stringify(mobile)}`);
-  console.log(`UI_E2E_OK tabs=${Object.keys(checks).join(',')} mobile_overflow=false`);
+  if (mobile.tableScroll <= mobile.tableClient) throw new Error(`Product table is not horizontally scrollable: ${JSON.stringify(mobile)}`);
+  console.log(`UI_E2E_OK tabs=${Object.keys(checks).join(',')} mobile_overflow=false mobile_table_scroll=true`);
 } finally {
+  try { await command('Browser.close'); } catch {}
   try { socket?.close(); } catch {}
   chrome.kill();
   await delay(500);
