@@ -30,6 +30,8 @@ async function cachedReport(input) {
 }
 
 function json(res, status, value) { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(value)); }
+function requireToken(input, category) { if (typeof input?.token !== 'string' || !input.token.trim()) { const error = new Error(`Нужен токен WB категории «${category}»`); error.statusCode = 403; throw error; } return input.token.trim(); }
+function requireNamedToken(input, field, category) { if (typeof input?.[field] !== 'string' || !input[field].trim()) { const error = new Error(`Нужен токен WB категории «${category}»`); error.statusCode = 403; throw error; } return input[field].trim(); }
 async function body(req) {
   const chunks = []; let size = 0;
   for await (const chunk of req) { size += chunk.length; if (size > 1024 * 1024) throw new Error('Запрос слишком большой'); chunks.push(chunk); }
@@ -50,7 +52,7 @@ async function readHistory() { try { return (await readFile(historyFile, 'utf8')
 const server = http.createServer(async (req, res) => {
   try {
     if (req.method === 'POST' && req.url === '/api/analyze') {
-      const input = await body(req);
+      const input = await body(req); requireToken(input, 'Финансы или Статистика');
       const report = await cachedReport({ token: input.token, dateFrom: input.dateFrom, dateTo: input.dateTo });
       const rows = report.rows;
       const analysis = analyzeReport(rows, input.settings);
@@ -82,12 +84,13 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, value);
     }
     if (req.method === 'POST' && req.url === '/api/simulate') { const input = await body(req); return json(res, 200, simulateProduct(input.product, input.scenario)); }
-    if (req.method === 'POST' && req.url === '/api/stocks') { const input = await body(req); const stocks = await fetchCurrentStocks({ token: input.token, nmIds: input.nmIds }); return json(res, 200, { generatedAt: new Date().toISOString(), rows: stocks.length, stocks }); }
+    if (req.method === 'POST' && req.url === '/api/stocks') { const input = await body(req); requireToken(input, 'Аналитика'); const stocks = await fetchCurrentStocks({ token: input.token, nmIds: input.nmIds }); return json(res, 200, { generatedAt: new Date().toISOString(), rows: stocks.length, stocks }); }
     if (req.method === 'POST' && req.url === '/api/inventory-analysis') { const input = await body(req); return json(res, 200, { inventory: analyzeInventory(input.stocks ?? [], input.products ?? [], input.days) }); }
-    if (req.method === 'POST' && req.url === '/api/product-card') { const input = await body(req); return json(res, 200, await fetchProductCard({ token: input.token, nmId: input.nmId })); }
+    if (req.method === 'POST' && req.url === '/api/product-card') { const input = await body(req); requireToken(input, 'Контент'); return json(res, 200, await fetchProductCard({ token: input.token, nmId: input.nmId })); }
     if (req.method === 'POST' && req.url === '/api/catalog') { const input = await body(req); const [contentResult, priceResult] = await Promise.allSettled([fetchProductCatalog({ token: input.contentToken }), fetchPrices({ token: input.priceToken, nmIds: [] })]); if (priceResult.status === 'rejected') throw new Error(`Цены и скидки: ${priceResult.reason.message}`); const cards = contentResult.status === 'fulfilled' ? contentResult.value : []; const prices = priceResult.value; const contentWarning = contentResult.status === 'rejected' ? `Content: ${contentResult.reason.message}` : ''; const catalog = mergeCatalog(cards, prices); return json(res, 200, { generatedAt: new Date().toISOString(), ...catalog, warning: contentWarning || null }); }
     if (req.method === 'POST' && req.url === '/api/reconciliation') {
       const input = await body(req);
+      requireToken(input, 'Поставки');
       const supplies = await fetchSupplies({ token: input.token, dateFrom: input.dateFrom, dateTo: input.dateTo, maxSupplies: input.maxSupplies });
       const sales = (input.products ?? []).map(product => ({ nmId: product.nmId, barcode: product.barcode, quantity: product.sold ?? product.quantity ?? 0 }));
       const returns = (input.products ?? []).map(product => ({ nmId: product.nmId, barcode: product.barcode, quantity: product.returned ?? 0 }));
@@ -98,7 +101,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { generatedAt: new Date().toISOString(), summary, supplies: supplyList, rows });
     }
     if (req.method === 'POST' && req.url === '/api/repricer/plan') { const input = await body(req); const prices = await fetchPrices({ token: input.token, nmIds: (input.products ?? []).map(x => x.nmId) }); const byId = new Map(prices.map(x => [x.nmId, x])); return json(res, 200, { plan: buildPricePlan((input.products ?? []).map(x => ({ ...x, ...(byId.get(String(x.nmId)) ?? {}) })), input) }); }
-    if (req.method === 'POST' && req.url === '/api/prices') { const input = await body(req); return json(res, 200, { prices: await fetchPrices({ token: input.token, nmIds: input.nmIds ?? [] }) }); }
+    if (req.method === 'POST' && req.url === '/api/prices') { const input = await body(req); requireToken(input, 'Цены и скидки'); return json(res, 200, { prices: await fetchPrices({ token: input.token, nmIds: input.nmIds ?? [] }) }); }
     if (req.method === 'POST' && req.url === '/api/repricer/apply') { const input = await body(req); if (input.confirm !== 'APPLY') throw new Error('Для изменения цен передайте confirm=APPLY'); const plan = validatePricePlan((input.plan ?? []).filter(x => x.status === 'ready')); if (plan.some(x => x.oldPrice && Math.abs(x.newPrice / x.oldPrice - 1) > 0.2)) throw new Error('Изменение больше 20% заблокировано защитой'); const result = await updatePrices({ token: input.token, data: plan.map(x => ({ nmID: x.nmID, price: x.newPrice, discount: x.discount })) }); return json(res, 200, { result, applied: plan.length, plan }); }
     if (req.method === 'POST' && req.url === '/api/repricer/status') { const input = await body(req); return json(res, 200, await fetchPriceTask({ token: input.token, uploadID: input.uploadID })); }
     if (req.method === 'POST' && req.url === '/api/telegram') {
