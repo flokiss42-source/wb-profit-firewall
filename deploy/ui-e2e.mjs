@@ -7,6 +7,7 @@ import { createInterface } from 'node:readline/promises';
 const chromePath = process.env.CHROME_PATH ?? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const url = process.env.WB_PROFIT_URL ?? 'https://profit.46-8-98-79.sslip.io';
 const demo = new URL(url).searchParams.has('demo');
+const expectError = process.env.WB_PROFIT_EXPECT_ERROR === '1';
 const profile = await mkdtemp(path.join(tmpdir(), 'wb-profit-ui-'));
 const port = 10000 + Math.floor(Math.random() * 40000);
 const chrome = spawn(chromePath, ['--headless=new', '--disable-gpu', '--disable-extensions', '--no-first-run', `--remote-debugging-port=${port}`, '--remote-allow-origins=*', `--user-data-dir=${profile}`, '--window-size=1440,1000', url], { stdio: 'ignore' });
@@ -37,6 +38,7 @@ async function waitFor(expression, timeout = 120000) {
 }
 
 try {
+  let expectedErrorSeen = false;
   let pages;
   for (let attempt = 0; attempt < 80; attempt++) {
     try { pages = await (await fetch(`http://127.0.0.1:${port}/json`)).json(); break; } catch { await delay(250); }
@@ -65,9 +67,16 @@ try {
     if (!token) throw new Error('Token is required');
     await evaluate(`document.getElementById('token').value=${JSON.stringify(token)};document.getElementById('compare').checked=false;document.getElementById('analyze').click();true`);
     const result = await waitFor("document.getElementById('message').className==='success'?document.getElementById('message').textContent:document.getElementById('message').className==='error'?('ERROR:'+document.getElementById('message').textContent):''");
-    if (result.startsWith('ERROR:')) throw new Error(result);
+    if (expectError) {
+      if (!result.startsWith('ERROR:')) throw new Error(`Expected an error, got: ${result}`);
+      if (/fetch failed|failed to fetch/i.test(result)) throw new Error(`Raw transport error reached the UI: ${result}`);
+      expectedErrorSeen = true;
+    } else if (result.startsWith('ERROR:')) throw new Error(result);
   }
 
+  if (expectedErrorSeen) {
+    console.log('UI_NEGATIVE_E2E_OK friendly_api_error=true raw_fetch_error=false');
+  } else {
   const checks = {};
   checks.provenance = await evaluate(`document.getElementById('dataProvenance').textContent.includes('Источник:')${demo?'':"&&!document.getElementById('dataProvenance').textContent.includes('демо-данные')"}`);
   for (const section of ['overview', 'actions', 'products', 'diagnostics', 'tools']) {
@@ -86,6 +95,7 @@ try {
   if (mobile.scrollWidth > mobile.viewport) throw new Error(`Mobile overflow: ${JSON.stringify(mobile)}`);
   if (mobile.tableScroll <= mobile.tableClient) throw new Error(`Product table is not horizontally scrollable: ${JSON.stringify(mobile)}`);
   console.log(`UI_E2E_OK tabs=${Object.keys(checks).join(',')} mobile_overflow=false mobile_table_scroll=true`);
+  }
 } finally {
   try { await command('Browser.close'); } catch {}
   try { socket?.close(); } catch {}
