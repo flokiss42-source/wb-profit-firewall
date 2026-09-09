@@ -49,6 +49,10 @@ test('серверные guards покрывают все основные read-
     ['/api/reconciliation', { products: [], stocks: [] }],
     ['/api/prices', { nmIds: [] }],
     ['/api/product-card', { nmId: 1 }],
+    ['/api/repricer/plan', { products: [] }],
+    ['/api/repricer/status', { uploadID: 1 }],
+    ['/api/repricer/apply', { confirm: 'APPLY', plan: [] }],
+    ['/api/history', {}],
   ];
   for (const [path, payload] of cases) {
     const response = await fetch(`http://127.0.0.1:${port}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });

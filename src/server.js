@@ -35,7 +35,10 @@ function requireNamedToken(input, field, category) { if (typeof input?.[field] !
 async function body(req) {
   const chunks = []; let size = 0;
   for await (const chunk of req) { size += chunk.length; if (size > 1024 * 1024) throw new Error('Запрос слишком большой'); chunks.push(chunk); }
-  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  const input = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  const category = req.url === '/api/repricer/plan' || req.url === '/api/repricer/status' || req.url === '/api/repricer/apply' ? 'Цены и скидки' : req.url === '/api/history' ? 'Финансы' : null;
+  if (category) requireToken(input, category);
+  return input;
 }
 
 function previousPeriod(dateFrom, dateTo) {
