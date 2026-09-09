@@ -26,3 +26,14 @@ test('HTTP-сервер поддерживает GET и HEAD без тела', a
   assert.equal(page.status, 200);
   assert.match(await page.text(), /WB Profit Firewall/);
 });
+test('сервер отклоняет пустые категорийные токены до запроса к WB', async (context) => {
+  const port = await freePort();
+  const child = spawn(process.execPath, ['src/server.js'], { cwd: process.cwd(), env: { ...process.env, PORT: String(port) }, stdio: 'ignore' });
+  context.after(() => child.kill());
+  for (let attempt = 0; attempt < 40; attempt++) {
+    try { await fetch(`http://127.0.0.1:${port}/`); break; } catch { await new Promise((resolve) => setTimeout(resolve, 50)); }
+  }
+  const response = await fetch(`http://127.0.0.1:${port}/api/stocks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  assert.equal(response.status, 403);
+  assert.match((await response.json()).error, /Аналитика/);
+});
