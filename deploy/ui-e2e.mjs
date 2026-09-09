@@ -74,6 +74,7 @@ try {
     checks[section] = await evaluate(`document.querySelector('nav [data-section=${section}]').click();document.querySelector('nav [data-section=${section}]').classList.contains('active')`);
   }
   checks.unallocatedPanel = await evaluate("document.querySelector('nav [data-section=diagnostics]').click();Boolean(document.getElementById('unallocatedOperations'))");
+  checks.controlTotals = await evaluate("[...document.querySelectorAll('#diagnosticCards small')].some(node=>node.textContent==='Сверка сырых строк')");
   checks.productModal = await evaluate("document.querySelector('nav [data-section=products]').click();document.querySelector('#rows tr')?.click();!document.querySelector('.product-modal').classList.contains('hidden')");
   await evaluate("document.getElementById('modalClose').click();document.querySelector('nav [data-section=tools]').click();document.getElementById('simulate').click();true");
   checks.simulator = await waitFor("document.getElementById('simulation').textContent.length>0");

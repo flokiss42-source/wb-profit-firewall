@@ -10,7 +10,7 @@ main{padding-top:40px}header{align-items:center}header h1{font-size:clamp(34px,3
 .setup{margin-top:18px;padding:18px;border-radius:16px}
 .field input,.field textarea,.toolbar input,.toolbar select,.tool input,.tool select,.stock-controls input:not([type=file]),.stock-controls select{border-color:#d4deec;border-radius:9px;background:rgba(249,251,255,.9);transition:border-color .15s,box-shadow .15s,background .15s}
 .field input:focus,.field textarea:focus,.toolbar input:focus,.toolbar select:focus,.tool input:focus,.tool select:focus,.stock-controls input:focus,.stock-controls select:focus{outline:none;border-color:#6691f8;background:#fff;box-shadow:0 0 0 4px rgba(50,103,246,.12)}
-.accuracy{margin-top:12px;padding:13px 15px}.cards{gap:12px;margin:14px 0}.cards article{min-height:118px;padding:18px}.cards strong{font-size:clamp(24px,2vw,30px)}.cards .dark{background:linear-gradient(145deg,#17233a,#0b1222)}
+.accuracy{margin-top:12px;padding:13px 15px}.cards{gap:12px;margin:14px 0}.cards article{min-height:118px;padding:18px}.cards strong{font-size:clamp(24px,2vw,30px)}.cards .dark{background:linear-gradient(145deg,#17233a,#0b1222)}.diagnostic-cards{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))!important}
 .panel{border-radius:16px}.panelhead{padding:19px 21px}.badge{padding:6px 10px}th{letter-spacing:.05em}tbody tr{transition:background .15s}tbody tr:hover{background:#f4f7fd}
 .product-modal-card,.price-modal-card{border:1px solid #dfe6f1}.metric-grid div{border:1px solid #e5eaf3;background:#f7f9fd}
 .unallocated-panel{grid-column:1/-1}.unallocated-panel .tablewrap{max-height:320px}

@@ -37,7 +37,7 @@ $('actionList').addEventListener('click',event=>{if(!event.target.closest('[data
   const losses=products.filter(p=>p.profit!=null&&p.profit<0).sort((a,b)=>a.profit-b.profit).slice(0,8);
   const returns=products.filter(p=>p.returnRate>10).sort((a,b)=>b.returnRate-a.returnRate).slice(0,8);
   const unknown=data.unexplainedCharges??[],unallocated=data.unallocatedOperations??[];
-  const cards=[['Логистика',rub(sum('logistics'))],['Хранение и приёмка',rub(sum('storage')+sum('acceptance'))],['Штрафы и удержания',rub(sum('penalties')+sum('deductions'))],['Эквайринг (уже в выплате)',rub(sum('acquiring'))]];
+  const control=data.controlTotals,cards=[['Логистика',rub(sum('logistics'))],['Хранение и приёмка',rub(sum('storage')+sum('acceptance'))],['Штрафы и удержания',rub(sum('penalties')+sum('deductions'))],['Эквайринг (уже в выплате)',rub(sum('acquiring'))],['Сверка сырых строк',control?`${rub(control.difference)} · ${control.status==='matched'?'сходится':'есть расхождение'}`:'нет данных']];
   $('diagnosticCards').innerHTML=cards.map(([label,value])=>`<article><small>${label}</small><strong>${value}</strong></article>`).join('');
   const list=(rows,view,empty)=>rows.length?rows.map((x,i)=>`<div class="diagnostic-row"><span>${i+1}</span><div><b>${x.article?`Артикул продавца: ${esc(x.article)}`:'Артикул продавца не указан'}</b><small>nmID: ${esc(x.nmId||'—')} · баркод: ${esc(x.barcode||'—')}</small><small>${view(x)}</small></div></div>`).join(''):`<p class="diagnostic-empty">${empty}</p>`;
   $('lossRanking').innerHTML=list(losses,x=>`Убыток ${rub(Math.abs(x.profit))} · маржа ${x.margin==null?'—':`${num(x.margin)}%`}`,'Подтверждённых убытков нет');

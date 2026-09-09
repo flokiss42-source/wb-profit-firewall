@@ -1,0 +1,7 @@
+[
+  { "rrd_id": 1, "rr_dt": "2026-09-01", "nm_id": 101, "barcode": "4600000000001", "sa_name": "SKU-A", "doc_type_name": "Продажа", "quantity": 2, "retail_amount": 2000, "ppvz_for_pay": 1400, "delivery_rub": 100, "storage_fee": 20, "acquiring_fee": 30 },
+  { "rrd_id": 2, "rr_dt": "2026-09-02", "nm_id": 101, "barcode": "4600000000001", "sa_name": "SKU-A", "doc_type_name": "Возврат", "quantity": 1, "retail_amount": -1000, "ppvz_for_pay": -700, "delivery_rub": 80, "penalty": 10 },
+  { "rrd_id": 3, "rr_dt": "2026-09-03", "nm_id": 202, "barcode": "4600000000002", "sa_name": "SKU-B", "doc_type_name": "Продажа", "quantity": 1, "retail_amount": 500, "ppvz_for_pay": 300, "deduction": 20 },
+  { "rrd_id": 4, "rr_dt": "2026-09-04", "nm_id": 0, "doc_type_name": "Компенсация", "additional_payment": 100, "delivery_rub": 5 },
+  { "rrd_id": 5, "rr_dt": "2026-09-05", "doc_type_name": "Техническое удержание", "deduction": 40 }
+]

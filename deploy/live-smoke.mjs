@@ -41,11 +41,14 @@ if (!data.products.every((item) => item.unitCost !== null || item.profit === nul
 if (!['finance', 'statistics'].includes(data.reportSource)) throw new Error(`Unexpected report source: ${data.reportSource}`);
 if (data.formulaVersion !== '1.1.0') throw new Error(`Unexpected formula version: ${data.formulaVersion}`);
 if (!Array.isArray(data.unallocatedOperations)) throw new Error('Unallocated operations contract is missing');
+if (!data.controlTotals || data.controlTotals.status !== 'matched' || data.controlTotals.difference !== 0) {
+  throw new Error(`Financial control totals mismatch: ${data.controlTotals?.difference ?? 'missing'}`);
+}
 const round = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
 const unallocatedNet = round(data.unallocatedOperations.reduce((sum, item) => sum + Number(item.netEffect ?? 0), 0));
 if (unallocatedNet !== data.summary.unallocatedNetEffect) throw new Error('Unallocated net-effect checksum mismatch');
 
-console.log(`LIVE_FINANCE_SMOKE_OK source=${data.reportSource} formula=${data.formulaVersion} products_present=${data.products.length > 0} unknown_cost_protected=true unallocated_checksum=true`);
+console.log(`LIVE_FINANCE_SMOKE_OK source=${data.reportSource} formula=${data.formulaVersion} products_present=${data.products.length > 0} unknown_cost_protected=true unallocated_checksum=true control_totals=true`);
 
 if (process.env.WB_PROFIT_ANALYTICS_KEY && process.env.WB_PROFIT_ENV_FILE) {
   const env = await readFile(process.env.WB_PROFIT_ANALYTICS_ENV_FILE ?? process.env.WB_PROFIT_ENV_FILE, 'utf8');
