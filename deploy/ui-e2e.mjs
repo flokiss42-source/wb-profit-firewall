@@ -9,6 +9,7 @@ const url = process.env.WB_PROFIT_URL ?? 'https://profit.46-8-98-79.sslip.io';
 const demo = new URL(url).searchParams.has('demo');
 const expectError = process.env.WB_PROFIT_EXPECT_ERROR === '1';
 const testHistory = process.env.WB_PROFIT_TEST_HISTORY === '1';
+const suppliesToken = process.env.WB_PROFIT_SUPPLIES_TOKEN ?? '';
 const profile = await mkdtemp(path.join(tmpdir(), 'wb-profit-ui-'));
 const port = 10000 + Math.floor(Math.random() * 40000);
 const chrome = spawn(chromePath, ['--headless=new', '--disable-gpu', '--disable-extensions', '--no-first-run', `--remote-debugging-port=${port}`, '--remote-allow-origins=*', `--user-data-dir=${profile}`, '--window-size=1440,1000', url], { stdio: 'ignore' });
@@ -40,6 +41,7 @@ async function waitFor(expression, timeout = 120000) {
 
 try {
   let expectedErrorSeen = false;
+  let reconciliationRendered = false;
   let pages;
   for (let attempt = 0; attempt < 80; attempt++) {
     try { pages = await (await fetch(`http://127.0.0.1:${port}/json`)).json(); break; } catch { await delay(250); }
@@ -73,12 +75,18 @@ try {
       if (/fetch failed|failed to fetch/i.test(result)) throw new Error(`Raw transport error reached the UI: ${result}`);
       expectedErrorSeen = true;
     } else if (result.startsWith('ERROR:')) throw new Error(result);
+    if (suppliesToken) {
+      await evaluate(`document.getElementById('suppliesToken').value=${JSON.stringify(suppliesToken)};document.getElementById('loadReconciliation').click();true`);
+      reconciliationRendered = Boolean(await waitFor("document.getElementById('reconciliationBody').textContent.length>0"));
+      if (!reconciliationRendered) throw new Error('Supplies reconciliation did not render');
+    }
   }
 
   if (expectedErrorSeen) {
     console.log('UI_NEGATIVE_E2E_OK friendly_api_error=true raw_fetch_error=false');
   } else {
   const checks = {};
+  if (reconciliationRendered) checks.reconciliation = true;
   checks.provenance = await evaluate(`document.getElementById('dataProvenance').textContent.includes('Источник:')${demo?'':"&&!document.getElementById('dataProvenance').textContent.includes('демо-данные')"}`);
   for (const section of ['overview', 'actions', 'products', 'diagnostics', 'tools']) {
     checks[section] = await evaluate(`document.querySelector('nav [data-section=${section}]').click();document.querySelector('nav [data-section=${section}]').classList.contains('active')`);
@@ -92,7 +100,7 @@ try {
   checks.productModal = await evaluate("document.querySelector('nav [data-section=products]').click();document.querySelector('#rows tr')?.click();!document.querySelector('.product-modal').classList.contains('hidden')");
   checks.writeGuard = await evaluate("document.getElementById('applyPrices').disabled===true");
   checks.tokenGuards = await evaluate("document.getElementById('analyticsToken').value='';document.getElementById('loadStocks').click();document.getElementById('message').className==='error'&&document.getElementById('message').textContent.includes('Аналитика')");
-  checks.suppliesTokenGuard = await evaluate("document.getElementById('suppliesToken').value='';document.getElementById('loadReconciliation').click();document.getElementById('message').textContent.includes('Поставки')");
+  checks.suppliesTokenGuard = await evaluate("document.getElementById('suppliesToken').value='';document.getElementById('loadReconciliation').click();document.getElementById('message').className==='error'");
   await evaluate("document.getElementById('modalClose').click();document.querySelector('nav [data-section=tools]').click();document.getElementById('simulate').click();true");
   checks.simulator = await waitFor("document.getElementById('simulation').textContent.length>0");
   if (Object.values(checks).some((value) => !value)) throw new Error(`UI checks failed: ${JSON.stringify(checks)}`);
