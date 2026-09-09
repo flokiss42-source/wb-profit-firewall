@@ -153,8 +153,10 @@ export async function fetchProductCatalog({ token, fetchImpl = fetch, maxPages =
     if (!batch.length) break;
     cards.push(...batch);
     const cursor = payload?.cursor ?? payload?.data?.cursor;
-    if (!cursor || batch.length < 100) break;
-    updatedAt = String(cursor.updatedAt ?? ''); nmID = Number(cursor.nmID ?? 0) || 0;
+    if (!cursor) break;
+    const nextUpdatedAt = String(cursor.updatedAt ?? ''), nextNmID = Number(cursor.nmID ?? 0) || 0;
+    if (nextUpdatedAt === updatedAt && nextNmID === nmID) throw new Error('WB вернул повторяющийся cursor каталога карточек');
+    updatedAt = nextUpdatedAt; nmID = nextNmID;
   }
   return cards.map(card => ({ nmId: String(card.nmID ?? card.nmId ?? ''), title: String(card.title ?? ''), brand: String(card.brand ?? card.brandName ?? card.supplier ?? ''), vendorCode: String(card.vendorCode ?? ''), barcode: String(card.sizes?.[0]?.skus?.[0] ?? card.barcode ?? '') }));
 }
