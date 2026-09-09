@@ -37,3 +37,21 @@ test('сервер отклоняет пустые категорийные то
   assert.equal(response.status, 403);
   assert.match((await response.json()).error, /Аналитика/);
 });
+test('серверные guards покрывают все основные read-only категории', async (context) => {
+  const port = await freePort();
+  const child = spawn(process.execPath, ['src/server.js'], { cwd: process.cwd(), env: { ...process.env, PORT: String(port) }, stdio: 'ignore' });
+  context.after(() => child.kill());
+  for (let attempt = 0; attempt < 40; attempt++) {
+    try { await fetch(`http://127.0.0.1:${port}/`); break; } catch { await new Promise((resolve) => setTimeout(resolve, 50)); }
+  }
+  const cases = [
+    ['/api/analyze', { settings: {} }],
+    ['/api/reconciliation', { products: [], stocks: [] }],
+    ['/api/prices', { nmIds: [] }],
+    ['/api/product-card', { nmId: 1 }],
+  ];
+  for (const [path, payload] of cases) {
+    const response = await fetch(`http://127.0.0.1:${port}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    assert.equal(response.status, 403, `${path} must reject empty token`);
+  }
+});
