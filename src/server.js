@@ -45,7 +45,7 @@ function previousPeriod(dateFrom, dateTo) {
 }
 
 async function saveHistory(entry) { await mkdir(dataDir, { recursive: true }); await appendFile(historyFile, `${JSON.stringify(entry)}\n`, 'utf8'); }
-async function readHistory() { try { return (await readFile(historyFile, 'utf8')).split(/\r?\n/).filter(Boolean).slice(-30).reverse().map(JSON.parse); } catch (error) { if (error.code === 'ENOENT') return []; throw error; } }
+async function readHistory() { try { return (await readFile(historyFile, 'utf8')).split(/\r?\n/).filter(Boolean).slice(-10000).reverse().map(JSON.parse); } catch (error) { if (error.code === 'ENOENT') return []; throw error; } }
 
 const server = http.createServer(async (req, res) => {
   try {

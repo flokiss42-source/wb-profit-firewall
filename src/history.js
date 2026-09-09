@@ -21,5 +21,12 @@ export function historyEntry(token, period, analysis) {
 
 export function historyForAccount(entries, token) {
   const accountKey = accountFingerprint(token);
-  return entries.filter((entry) => entry.accountKey === accountKey).map(({ accountKey: _, products: __, ...safe }) => safe);
+  const periods = new Set();
+  return entries.filter((entry) => {
+    if (entry.accountKey !== accountKey) return false;
+    const periodKey = `${entry.period?.dateFrom ?? ''}:${entry.period?.dateTo ?? ''}`;
+    if (periods.has(periodKey)) return false;
+    periods.add(periodKey);
+    return true;
+  }).slice(0, 30).map(({ accountKey: _, products: __, ...safe }) => safe);
 }

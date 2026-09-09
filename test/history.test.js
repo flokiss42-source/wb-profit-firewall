@@ -15,3 +15,14 @@ test('история разделяется по токену и не возвр
 });
 
 test('история отклоняет пустой токен', () => assert.throws(() => historyForAccount([], ''), /нужен токен/i));
+
+test('лимит истории применяется после фильтра кабинета и периоды не дублируются', () => {
+  const analysis = { generatedAt: '2026-09-09T00:00:00Z', summary: { profit: 100 }, products: [], alerts: [] };
+  const own = Array.from({ length: 35 }, (_, index) => historyEntry('token-a', { dateFrom: `2026-08-${String(index + 1).padStart(2, '0')}`, dateTo: `2026-08-${String(index + 1).padStart(2, '0')}` }, analysis));
+  const duplicate = historyEntry('token-a', own[0].period, { ...analysis, summary: { profit: 999 } });
+  const noise = Array.from({ length: 50 }, (_, index) => historyEntry(`other-${index}`, { dateFrom: '2026-09-01', dateTo: '2026-09-02' }, analysis));
+  const visible = historyForAccount([duplicate, ...noise, ...own], 'token-a');
+  assert.equal(visible.length, 30);
+  assert.equal(visible[0].summary.profit, 999);
+  assert.equal(new Set(visible.map(entry => `${entry.period.dateFrom}:${entry.period.dateTo}`)).size, 30);
+});
