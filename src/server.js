@@ -8,6 +8,7 @@ import { analyzeReport, analyzeInventory, compareAnalyses, evaluateRules, foreca
 import { findUnexplainedCharges } from './charges.js';
 import { reconcileCatalog } from './reconciliation.js';
 import { buildPricePlan, validatePricePlan } from './repricer.js';
+import { accountFingerprint, FORMULA_VERSION, historyEntry, historyForAccount } from './history.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 const vendorRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'node_modules', 'xlsx', 'dist');
@@ -52,6 +53,7 @@ const server = http.createServer(async (req, res) => {
       const report = await cachedReport({ token: input.token, dateFrom: input.dateFrom, dateTo: input.dateTo });
       const rows = report.rows;
       const analysis = analyzeReport(rows, input.settings);
+      analysis.formulaVersion = FORMULA_VERSION;
       analysis.period = { dateFrom: input.dateFrom, dateTo: input.dateTo };
       analysis.unexplainedCharges = findUnexplainedCharges(rows);
       analysis.reportSource = report.source;
@@ -60,13 +62,14 @@ const server = http.createServer(async (req, res) => {
       analysis.forecast = forecastCashflow(analysis, { days: Math.round((new Date(input.dateTo) - new Date(input.dateFrom)) / 86400000) + 1, reservePercent: input.settings?.reservePercent });
       if (input.compare) {
         const period = previousPeriod(input.dateFrom, input.dateTo);
-        const cached = (await readHistory()).find(entry => entry.period?.dateFrom === period.dateFrom && entry.period?.dateTo === period.dateTo && Array.isArray(entry.products));
+        const accountKey = accountFingerprint(input.token);
+        const cached = (await readHistory()).find(entry => entry.accountKey === accountKey && entry.period?.dateFrom === period.dateFrom && entry.period?.dateTo === period.dateTo && Array.isArray(entry.products));
         if (cached) {
           const previous = { summary: cached.summary, products: cached.products };
           analysis.comparison = { period, source: 'local-history', ...compareAnalyses(analysis, previous) };
         } else analysis.comparisonError = 'Нет локального снимка предыдущего периода — дополнительный запрос отключён для защиты от лимита WB';
       }
-      if (input.saveHistory) await saveHistory({ generatedAt: analysis.generatedAt, period: { dateFrom: input.dateFrom, dateTo: input.dateTo }, summary: analysis.summary, products: analysis.products, alerts: analysis.alerts.length });
+      if (input.saveHistory) await saveHistory(historyEntry(input.token, { dateFrom: input.dateFrom, dateTo: input.dateTo }, analysis));
       return json(res, 200, analysis);
     }
     if (req.method === 'POST' && req.url === '/api/seller-info') {
@@ -102,7 +105,7 @@ const server = http.createServer(async (req, res) => {
       const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(input.botToken)}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: input.chatId, text: String(input.message).slice(0, 4000) }), signal: AbortSignal.timeout(30000) });
       if (!response.ok) throw new Error(`Telegram вернул HTTP ${response.status}`); return json(res, 200, { ok: true });
     }
-    if (req.method === 'GET' && req.url === '/api/history') return json(res, 200, await readHistory());
+    if (req.method === 'POST' && req.url === '/api/history') { const input = await body(req); return json(res, 200, historyForAccount(await readHistory(), input.token)); }
     if (req.method !== 'GET') return json(res, 405, { error: 'Метод не поддерживается' });
     const pathname = new URL(req.url, 'http://localhost').pathname;
     if (pathname === '/vendor/xlsx.full.min.js') { const data = await readFile(path.join(vendorRoot, 'xlsx.full.min.js')); res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=86400' }); return res.end(data); }
