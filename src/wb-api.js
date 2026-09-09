@@ -80,7 +80,8 @@ export async function fetchReport({ token, dateFrom, dateTo, fetchImpl = fetch, 
       } else {
         options.method = 'POST'; options.headers['Content-Type'] = 'application/json'; options.body = JSON.stringify({ dateFrom, dateTo, limit: pageLimit, rrdId: rrdid });
       }
-      const response = await fetchImpl(url, options);
+      const request = () => fetchImpl(url, options);
+      const response = await retryAfterRateLimit(await request(), request);
       if (!response.ok) {
         const detail = await errorDetail(response);
         if (!legacy && page === 0 && (response.status === 401 || response.status === 403)) return load(true, { status: response.status, detail });
