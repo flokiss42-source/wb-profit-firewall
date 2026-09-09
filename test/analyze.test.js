@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { aggregateReport, analyzeReport, analyzeInventory, compareAnalyses, evaluateRules, forecastCashflow, simulateProduct } from '../src/analyze.js';
+import { aggregateReport, analyzeReport, analyzeInventory, compareAnalyses, evaluateRules, extractUnallocatedOperations, forecastCashflow, simulateProduct } from '../src/analyze.js';
 
 test('разделяет продажи и возвраты и суммирует расходы',()=>{const rows=[
   {nm_id:1,sa_name:'A',doc_type_name:'Продажа',quantity:2,retail_amount:2000,ppvz_for_pay:1400,delivery_rub:100},
@@ -12,6 +12,11 @@ test('не создаёт товары из технических строк WB
   {nm_id:1,barcode:'a',doc_type_name:'Продажа',quantity:1,retail_amount:1000,ppvz_for_pay:700,delivery_rub:100,acquiring_fee:20},
   {nm_id:1,barcode:'a',delivery_rub:-30}
 ];const result=analyzeReport(rows,{costs:{a:200}});assert.equal(result.products.length,1);assert.equal(result.products[0].logistics,70);assert.equal(result.products[0].acquiring,20);assert.equal(result.products[0].charges,70);assert.equal(result.products[0].netFromWb,630);assert.equal(result.summary.unallocatedCharges,100);assert.equal(result.summary.charges,170);assert.equal(result.summary.profit,330)});
+
+test('учитывает выплаты и компенсации технических строк полным чистым эффектом',()=>{const rows=[
+  {rrd_id:55,rr_dt:'2026-09-01',nm_id:0,doc_type_name:'Компенсация',ppvz_for_pay:20,additional_payment:80,delivery_rub:15,deduction:5},
+  {nm_id:1,barcode:'a',doc_type_name:'Продажа',quantity:1,retail_amount:1000,ppvz_for_pay:700}
+];const result=analyzeReport(rows,{costs:{a:200}}),[operation]=extractUnallocatedOperations(rows);assert.equal(operation.netEffect,80);assert.equal(operation.charges,20);assert.equal(operation.rrdId,'55');assert.equal(result.summary.unallocatedNetEffect,80);assert.equal(result.summary.netFromWb,780);assert.equal(result.summary.profit,580);assert.equal(result.unallocatedOperations.length,1)});
 
 test('не показывает прибыль без себестоимости',()=>{const result=analyzeReport([{nm_id:1,doc_type_name:'Продажа',quantity:1,retail_amount:1000,ppvz_for_pay:700}]);assert.equal(result.products[0].profit,null);assert.equal(result.products[0].severity,'unknown');assert.equal(result.summary.profit,null)});
 

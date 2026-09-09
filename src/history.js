@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-export const FORMULA_VERSION = '1.0.0';
+export const FORMULA_VERSION = '1.1.0';
 
 export function accountFingerprint(token) {
   if (!String(token ?? '').trim()) throw new Error('Для истории нужен токен финансового кабинета');

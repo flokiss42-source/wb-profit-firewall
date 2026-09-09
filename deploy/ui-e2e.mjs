@@ -73,6 +73,7 @@ try {
   for (const section of ['overview', 'actions', 'products', 'diagnostics', 'tools']) {
     checks[section] = await evaluate(`document.querySelector('nav [data-section=${section}]').click();document.querySelector('nav [data-section=${section}]').classList.contains('active')`);
   }
+  checks.unallocatedPanel = await evaluate("document.querySelector('nav [data-section=diagnostics]').click();Boolean(document.getElementById('unallocatedOperations'))");
   checks.productModal = await evaluate("document.querySelector('nav [data-section=products]').click();document.querySelector('#rows tr')?.click();!document.querySelector('.product-modal').classList.contains('hidden')");
   await evaluate("document.getElementById('modalClose').click();document.querySelector('nav [data-section=tools]').click();document.getElementById('simulate').click();true");
   checks.simulator = await waitFor("document.getElementById('simulation').textContent.length>0");

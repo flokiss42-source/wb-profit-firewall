@@ -13,6 +13,7 @@ main{padding-top:40px}header{align-items:center}header h1{font-size:clamp(34px,3
 .accuracy{margin-top:12px;padding:13px 15px}.cards{gap:12px;margin:14px 0}.cards article{min-height:118px;padding:18px}.cards strong{font-size:clamp(24px,2vw,30px)}.cards .dark{background:linear-gradient(145deg,#17233a,#0b1222)}
 .panel{border-radius:16px}.panelhead{padding:19px 21px}.badge{padding:6px 10px}th{letter-spacing:.05em}tbody tr{transition:background .15s}tbody tr:hover{background:#f4f7fd}
 .product-modal-card,.price-modal-card{border:1px solid #dfe6f1}.metric-grid div{border:1px solid #e5eaf3;background:#f7f9fd}
+.unallocated-panel{grid-column:1/-1}.unallocated-panel .tablewrap{max-height:320px}
 @media(max-width:1100px){aside{box-shadow:0 10px 35px rgba(10,20,43,.15)}nav a:hover{transform:none}main{padding-top:28px}}
 @media(max-width:620px){main{padding:18px 14px 28px}header h1{font-size:30px!important;letter-spacing:-1px}header p:not(.eyebrow){font-size:12px}.dashboard-note{line-height:1.5}.setup{padding:14px}.cards article{min-height:102px}.panelhead{align-items:flex-start;gap:10px;padding:16px}.badge{white-space:nowrap}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}
