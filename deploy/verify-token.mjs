@@ -24,6 +24,8 @@ const response = await fetch(`${process.env.WB_PROFIT_URL ?? 'https://profit.46-
 const analysis = await response.json();
 if (!response.ok) throw new Error(`Server HTTP ${response.status}: ${analysis.error ?? 'unknown'}`);
 if (analysis.rows !== directRows.length) throw new Error(`Row mismatch: direct=${directRows.length}, server=${analysis.rows}`);
+if (analysis.reportSource !== directRows.source) throw new Error(`Source mismatch: direct=${directRows.source}, server=${analysis.reportSource}`);
+if (analysis.period?.dateFrom !== dateFrom || analysis.period?.dateTo !== dateTo) throw new Error('Selected period was not preserved');
 if (!analysis.products.every((item) => item.unitCost !== null || item.profit === null)) throw new Error('Unknown cost protection failed');
 
-console.log(`DIRECT_WB_OK seller_id=${seller.id || 'present'} rows_match=true products_present=${analysis.products.length > 0}`);
+console.log(`DIRECT_WB_OK seller_id=${seller.id || 'present'} source=${analysis.reportSource} period_match=true rows_match=true products_present=${analysis.products.length > 0}`);

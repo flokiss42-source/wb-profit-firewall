@@ -21,10 +21,10 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 function reportCacheKey(token, dateFrom, dateTo) { return createHash('sha256').update(`${token}\0${dateFrom}\0${dateTo}`).digest('hex'); }
 async function cachedReport(input) {
   const key = reportCacheKey(input.token, input.dateFrom, input.dateTo), cached = reportCache.get(key);
-  if (cached && Date.now() - cached.createdAt < CACHE_TTL_MS) return { rows: cached.rows, source: 'memory-cache' };
-  const rows = await fetchReport(input); reportCache.set(key, { createdAt: Date.now(), rows });
+  if (cached && Date.now() - cached.createdAt < CACHE_TTL_MS) return { rows: cached.rows, source: cached.source, transport: 'memory-cache' };
+  const rows = await fetchReport(input), source = rows.source ?? 'finance'; reportCache.set(key, { createdAt: Date.now(), rows, source });
   if (reportCache.size > 20) reportCache.delete(reportCache.keys().next().value);
-  return { rows, source: 'wb-api' };
+  return { rows, source, transport: 'wb-api' };
 }
 
 function json(res, status, value) { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(value)); }
@@ -52,8 +52,10 @@ const server = http.createServer(async (req, res) => {
       const report = await cachedReport({ token: input.token, dateFrom: input.dateFrom, dateTo: input.dateTo });
       const rows = report.rows;
       const analysis = analyzeReport(rows, input.settings);
+      analysis.period = { dateFrom: input.dateFrom, dateTo: input.dateTo };
       analysis.unexplainedCharges = findUnexplainedCharges(rows);
       analysis.reportSource = report.source;
+      analysis.reportTransport = report.transport;
       analysis.alerts = evaluateRules(analysis.products, input.settings?.rules);
       analysis.forecast = forecastCashflow(analysis, { days: Math.round((new Date(input.dateTo) - new Date(input.dateFrom)) / 86400000) + 1, reservePercent: input.settings?.reservePercent });
       if (input.compare) {

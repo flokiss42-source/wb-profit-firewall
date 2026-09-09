@@ -64,6 +64,7 @@ try {
   if (result.startsWith('ERROR:')) throw new Error(result);
 
   const checks = {};
+  checks.provenance = await evaluate("document.getElementById('dataProvenance').textContent.includes('Источник:')&&!document.getElementById('dataProvenance').textContent.includes('демо-данные')");
   for (const section of ['overview', 'actions', 'products', 'diagnostics', 'tools']) {
     checks[section] = await evaluate(`document.querySelector('nav [data-section=${section}]').click();document.querySelector('nav [data-section=${section}]').classList.contains('active')`);
   }

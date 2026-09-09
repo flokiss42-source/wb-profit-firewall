@@ -67,6 +67,10 @@ export async function fetchReport({ token, dateFrom, dateTo, fetchImpl = fetch, 
   if (dateFrom > dateTo) throw new Error('Начальная дата позже конечной');
   async function load(legacy = false, financeFailure = null) {
     const rows = []; let rrdid = 0;
+    const finish = () => {
+      Object.defineProperty(rows, 'source', { value: legacy ? 'statistics' : 'finance', enumerable: false });
+      return rows;
+    };
     for (let page = 0; page < maxPages; page++) {
       const url = new URL(legacy ? LEGACY_ENDPOINT : ENDPOINT);
       url.searchParams.set('rrdid', String(rrdid));
@@ -88,14 +92,14 @@ export async function fetchReport({ token, dateFrom, dateTo, fetchImpl = fetch, 
         }
         throw new Error(`${legacy ? 'Старый' : 'Новый'} WB API вернул HTTP ${response.status}`);
       }
-      if (response.status === 204) return rows;
+      if (response.status === 204) return finish();
       const payload = await response.json();
       const batch = (Array.isArray(payload) ? payload : Array.isArray(payload.data) ? payload.data : Array.isArray(payload.rows) ? payload.rows : []).map(normalizeReportRow);
-      if (!batch.length) return rows;
+      if (!batch.length) return finish();
       rows.push(...batch);
       const next = Number(batch.at(-1)?.rrdId ?? batch.at(-1)?.rrd_id);
       if (!Number.isFinite(next) || next <= rrdid) throw new Error('Ошибка пагинации WB API');
-      rrdid = next; if (batch.length < pageLimit) return rows;
+      rrdid = next; if (batch.length < pageLimit) return finish();
     }
     throw new Error('Превышен безопасный лимит страниц WB API');
   }
